@@ -1,18 +1,3 @@
-"""
-MedLink database setup - v2.
-
-Changes from the first draft, based on team decisions:
-  - Dropped 'admin' as a role entirely (patient / nurse / doctor only).
-  - Nurses and doctors stay merged into one `providers` table
-    (role_type distinguishes them, can_prescribe only applies to doctors).
-  - Added a `MedicalRecord`-style table (diagnosis, prescription, record_date),
-    borrowed from the team's ERD.
-  - Appointments now support a nurse in addition to a doctor:
-      provider_id        -> the doctor (required)
-      assisting_nurse_id -> a nurse (optional, can be NULL if none assigned)
-
-Run this once to create medlink.db with all tables.
-"""
 import sqlite3
 
 conn = sqlite3.connect("medlink.db")
