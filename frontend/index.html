@@ -1,1 +1,136 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedLink - Hospital Management</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- LOGIN PAGE -->
+    <div id="loginPage" class="page active">
+        <div class="login-container">
+            <h1>MedLink</h1>
+            <h2>Login</h2>
+            <form id="loginForm">
+                <label for="email">Email/Username:</label>
+                <input type="text" id="email" placeholder="Enter email or username" required>
+                
+                <label for="password">Password:</label>
+                <input type="password" id="password" placeholder="Enter password" required>
+                
+                <button type="submit" class="btn-primary">Log In</button>
+            </form>
+            <p id="errorMessage" class="error-message"></p>
+            <a href="#" class="forgot-password">Forgot Password?</a>
+            
+            <p class="demo-info">Demo Credentials: patient@email.com / password123</p>
+        </div>
+    </div>
+
+    <!-- SIDEBAR (shown on all dashboards) -->
+    <div id="sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+            <h3>MedLink</h3>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-link" data-page="patientDashboard">Appointments</a>
+            <a href="#" class="nav-link" data-page="medicalHistory">Medical History</a>
+            <a href="#" class="nav-link" data-page="messages">Messages</a>
+            <a href="#" class="nav-link" data-page="profile">Profile</a>
+            <hr>
+            <a href="#" class="nav-link" id="logoutLink">Logout</a>
+        </nav>
+    </div>
+
+    <!-- PATIENT DASHBOARD -->
+    <div id="patientDashboard" class="page hidden">
+        <div class="dashboard-container">
+            <h1 id="patientWelcome">Welcome, Patient</h1>
+            
+            <section class="dashboard-section">
+                <h2>Upcoming Appointments</h2>
+                <div id="appointmentsList" class="appointments-list">
+                    <!-- Appointments will be inserted here by JavaScript -->
+                </div>
+                <button class="btn-primary" id="scheduleNewBtn">+ Schedule New Appointment</button>
+            </section>
+        </div>
+    </div>
+
+    <!-- APPOINTMENT SCHEDULING -->
+    <div id="appointmentScheduling" class="page hidden">
+        <div class="form-container">
+            <h1>Schedule New Appointment</h1>
+            <form id="appointmentForm">
+                <label for="doctorSelect">Select Doctor:</label>
+                <select id="doctorSelect" required>
+                    <option value="">-- Choose a Doctor --</option>
+                </select>
+
+                <label for="appointmentDate">Date:</label>
+                <input type="date" id="appointmentDate" required>
+
+                <label>Time Slot:</label>
+                <div id="timeSlots" class="time-slots">
+                    <!-- Time slots will be inserted here by JavaScript -->
+                </div>
+                <input type="hidden" id="selectedTime">
+
+                <div class="form-buttons">
+                    <button type="submit" class="btn-primary">Confirm Appointment</button>
+                    <button type="button" class="btn-secondary" id="cancelAppointmentBtn">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MEDICAL HISTORY PAGE -->
+    <div id="medicalHistory" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Medical History</h1>
+            <p>Medical history records will appear here. (In development)</p>
+            <button class="btn-secondary" id="backBtn1">Back</button>
+        </div>
+    </div>
+
+    <!-- MESSAGES PAGE -->
+    <div id="messages" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Messages</h1>
+            <p>Messages will appear here. (In development)</p>
+            <button class="btn-secondary" id="backBtn2">Back</button>
+        </div>
+    </div>
+
+    <!-- PROFILE PAGE -->
+    <div id="profile" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Profile</h1>
+            <p>User profile information will appear here. (In development)</p>
+            <button class="btn-secondary" id="backBtn3">Back</button>
+        </div>
+    </div>
+
+    <!-- DOCTOR DASHBOARD -->
+    <div id="doctorDashboard" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Doctor Dashboard</h1>
+            <p style="font-size: 18px; color: #666;">Doctor Dashboard - In Development</p>
+            <button class="btn-secondary" id="backBtn4">Back to Login</button>
+        </div>
+    </div>
+
+    <!-- NURSE DASHBOARD -->
+    <div id="nurseDashboard" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Nurse Dashboard</h1>
+            <p style="font-size: 18px; color: #666;">Nurse Dashboard - In Development</p>
+            <button class="btn-secondary" id="backBtn5">Back to Login</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
