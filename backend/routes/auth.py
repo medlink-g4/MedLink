@@ -6,7 +6,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
 
 
-DB_PATH = "medlink.db"
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
 
