@@ -18,10 +18,9 @@ As built today:
 | Frontend | HTML, CSS and plain JavaScript |
 | Tests | pytest |
 
-**Open decision.** The Project Plan document describes React, Node/Express and
-MySQL. The code is Python, Flask and SQLite. One of the two has to change
-before we submit. See the team thread. Until that is settled, this file
-describes what actually runs.
+The team agreed on this stack rather than migrating to React and Node, since it
+is what the existing code is written in. The Project Development Plan was
+updated to match and resubmitted.
 
 ## Layout
 

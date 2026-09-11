@@ -23,8 +23,6 @@ before the status update.
 
 ### Also open
 
-- **Stack decision.** The Project Plan says React, Node/Express and
-  PostgreSQL/MySQL. The code is Python, Flask and SQLite. One has to change.
 - **Two authentication defects**, both in `backend/routes/auth.py`. The
   database path resolves differently than in `database/init_db.py`, and
   registration never creates the matching `providers` or `patients` row. Both
@@ -34,7 +32,13 @@ before the status update.
   distributed to every team member. Sprints 2 through 5 currently have no
   assignees.
 
+## Settled
+
+- **Stack.** Python, Flask and SQLite, agreed by the team rather than migrating
+  to React and Node. The Project Development Plan was corrected and resubmitted
+  after the professor reopened the submission.
+
 ## Earlier
 
-- 9/10/26 — Project Backlog and Project Development Plan. Submitted late;
-  waiting on the professor.
+- 9/10/26 — Project Backlog and Project Development Plan. Submitted late, then
+  resubmitted with corrections after the professor reopened the submission.
