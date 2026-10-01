@@ -80,8 +80,10 @@ def build_database(tmpdir):
                (3, 5, 'doctor', 'Neurology',  1);
 
         INSERT INTO appointments
-            (patient_id, provider_id, assisting_nurse_id, appointment_time, status)
-        VALUES (1, 1, 2, '2026-09-23T10:00', 'scheduled');
+            (patient_id, provider_id, assisting_nurse_id,
+             start_time, end_time, reason, status, created_by)
+        VALUES (1, 1, 2, '2026-09-23T10:00', '2026-09-23T10:30',
+                'Blood pressure review', 'scheduled', 1);
 
         INSERT INTO medical_records
             (patient_id, provider_id, diagnosis, prescription, record_date)
