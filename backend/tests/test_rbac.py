@@ -50,8 +50,10 @@ def make_assigned(conn, doctor_provider_id, nurse_provider_id, patient_id):
     conn.execute(
         """
         INSERT INTO appointments
-            (patient_id, provider_id, assisting_nurse_id, appointment_time, status)
-        VALUES (?, ?, ?, '2026-09-21T10:00', 'scheduled')
+            (patient_id, provider_id, assisting_nurse_id,
+             start_time, end_time, reason, status, created_by)
+        VALUES (?, ?, ?, '2026-09-21T10:00', '2026-09-21T10:30',
+                'Follow-up', 'scheduled', 1)
         """,
         (patient_id, doctor_provider_id, nurse_provider_id),
     )
