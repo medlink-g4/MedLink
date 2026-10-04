@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,16 +15,19 @@
             <form id="loginForm">
                 <label for="email">Email/Username:</label>
                 <input type="text" id="email" placeholder="Enter email or username" required>
-                
+
                 <label for="password">Password:</label>
                 <input type="password" id="password" placeholder="Enter password" required>
-                
+
                 <button type="submit" class="btn-primary">Log In</button>
             </form>
             <p id="errorMessage" class="error-message"></p>
             <a href="#" class="forgot-password">Forgot Password?</a>
-            
-            <p class="demo-info">Demo Credentials: patient@email.com / password123</p>
+
+            <!-- NOTE: these demo creds only work once a matching user is
+                 registered in the real database via POST /api/auth/register.
+                 They are NOT seeded automatically. -->
+            <p class="demo-info">Demo: register a user via /api/auth/register, then log in here with that email/password.</p>
         </div>
     </div>
 
@@ -44,11 +46,11 @@
         </nav>
     </div>
 
-    <!-- PATIENT DASHBOARD -->
+    <!-- PATIENT DASHBOARD (unchanged -- still mock data, not part of this change) -->
     <div id="patientDashboard" class="page hidden">
         <div class="dashboard-container">
             <h1 id="patientWelcome">Welcome, Patient</h1>
-            
+
             <section class="dashboard-section">
                 <h2>Upcoming Appointments</h2>
                 <div id="appointmentsList" class="appointments-list">
@@ -113,21 +115,35 @@
         </div>
     </div>
 
-    <!-- DOCTOR DASHBOARD -->
-    <div id="doctorDashboard" class="page hidden">
+    <!-- DOCTOR / NURSE DASHBOARD -->
+    <!-- One shared template for both roles -- the real /api/dashboard/
+         endpoint returns the same shape (appointments, patients,
+         medical_records) regardless of whether the caller is a doctor
+         or a nurse, scoped automatically by the backend. -->
+    <div id="providerDashboard" class="page hidden">
         <div class="dashboard-container">
-            <h1>Doctor Dashboard</h1>
-            <p style="font-size: 18px; color: #666;">Doctor Dashboard - In Development</p>
-            <button class="btn-secondary" id="backBtn4">Back to Login</button>
-        </div>
-    </div>
+            <h1 id="providerWelcome">Welcome</h1>
 
-    <!-- NURSE DASHBOARD -->
-    <div id="nurseDashboard" class="page hidden">
-        <div class="dashboard-container">
-            <h1>Nurse Dashboard</h1>
-            <p style="font-size: 18px; color: #666;">Nurse Dashboard - In Development</p>
-            <button class="btn-secondary" id="backBtn5">Back to Login</button>
+            <section class="dashboard-section">
+                <h2>Appointments</h2>
+                <div id="providerAppointmentsList" class="appointments-list">
+                    <!-- Inserted by JavaScript -->
+                </div>
+            </section>
+
+            <section class="dashboard-section">
+                <h2>My Patients</h2>
+                <div id="providerPatientsList" class="appointments-list">
+                    <!-- Inserted by JavaScript -->
+                </div>
+            </section>
+
+            <section class="dashboard-section">
+                <h2>Recent Medical Records</h2>
+                <div id="providerRecordsList" class="appointments-list">
+                    <!-- Inserted by JavaScript -->
+                </div>
+            </section>
         </div>
     </div>
 
