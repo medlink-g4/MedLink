@@ -8,9 +8,7 @@ from flask import Blueprint, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
-
 JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
-
 auth_bp = Blueprint("auth", __name__)
 
 
@@ -56,16 +54,38 @@ def register():
             """,
             (name, email, password_hash, role),
         )
+        user_id = cursor.lastrowid
+
+        # Registration also creates the role-specific detail row.
+        # Without this, resolve_patient_id()/resolve_provider_id() in
+        # permissions.py return None for a brand-new user, and every
+        # scoped permission check fails -- even for that user's own data.
+        if role == "patient":
+            cursor.execute(
+                """
+                INSERT INTO patients (user_id, date_of_birth, phone, insurance_info)
+                VALUES (?, NULL, NULL, NULL)
+                """,
+                (user_id,),
+            )
+        else:  # 'doctor' or 'nurse'
+            can_prescribe = 1 if role == "doctor" else 0
+            cursor.execute(
+                """
+                INSERT INTO providers (user_id, role_type, specialty, can_prescribe)
+                VALUES (?, ?, NULL, ?)
+                """,
+                (user_id, role, can_prescribe),
+            )
 
         conn.commit()
-
-        user_id = cursor.lastrowid
 
         return jsonify(
             {"message": "User registered successfully", "userId": user_id, "role": role}
         ), 201
 
     except sqlite3.IntegrityError:
+        conn.rollback()
         return jsonify({"error": "Email already exists"}), 409
 
     finally:
