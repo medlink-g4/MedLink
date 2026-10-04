@@ -352,10 +352,20 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', function (e) {
             e.preventDefault();
-            const pageId = this.getAttribute('data-page');
-            if (pageId) {
-                showPage(pageId);
+            let pageId = this.getAttribute('data-page');
+            if (!pageId) return;
+
+            // The sidebar's "Appointments" link is shared across all roles,
+            // but it points at the PATIENT mock dashboard specifically.
+            // A doctor/nurse clicking it would land on a page that only
+            // re-renders for a patient login, showing stale leftover
+            // content from whoever last logged in as a patient. Send
+            // doctor/nurse back to their own dashboard instead.
+            if (pageId === 'patientDashboard' && (currentRole === 'doctor' || currentRole === 'nurse')) {
+                pageId = 'providerDashboard';
             }
+
+            showPage(pageId);
         });
     });
 
