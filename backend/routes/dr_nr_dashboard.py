@@ -5,7 +5,7 @@ dashboard needs on load.
 Not built on require_permission, because that decorator gates a single
 resource/action pair -- this endpoint spans three resources
 (appointments, patients, medical_records) in one response. Instead it
-reuses the same token decoding and provider-id resolution from
+reuses the same token decoding and provider-id resolution fromcd
 permissions.py, so it enforces identically to every other route:
 same JWT validation, same 401s on a bad/missing token.
 

@@ -1,12 +1,11 @@
-import sqlite3
 import os
-import jwt
-from flask import Blueprint, request, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
 from datetime import datetime, timedelta, timezone
-
-
 from pathlib import Path
+
+import jwt
+from flask import Blueprint, jsonify, request
+from werkzeug.security import check_password_hash, generate_password_hash
 
 DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
 
@@ -34,9 +33,7 @@ def register():
     role = data.get("role")
 
     if not name or not email or not password or not role:
-        return jsonify({
-            "error": "Name, email, password, and role are required"
-        }), 400
+        return jsonify({"error": "Name, email, password, and role are required"}), 400
 
     email = email.strip().lower()
     role = role.strip().lower()
@@ -44,9 +41,7 @@ def register():
     allowed_roles = ["patient", "nurse", "doctor"]
 
     if role not in allowed_roles:
-        return jsonify({
-            "error": "Invalid role"
-        }), 400
+        return jsonify({"error": "Invalid role"}), 400
 
     password_hash = generate_password_hash(password)
 
@@ -59,23 +54,19 @@ def register():
             INSERT INTO users (name, email, password_hash, role)
             VALUES (?, ?, ?, ?)
             """,
-            (name, email, password_hash, role)
+            (name, email, password_hash, role),
         )
 
         conn.commit()
 
         user_id = cursor.lastrowid
 
-        return jsonify({
-            "message": "User registered successfully",
-            "userId": user_id,
-            "role": role
-        }), 201
+        return jsonify(
+            {"message": "User registered successfully", "userId": user_id, "role": role}
+        ), 201
 
     except sqlite3.IntegrityError:
-        return jsonify({
-            "error": "Email already exists"
-        }), 409
+        return jsonify({"error": "Email already exists"}), 409
 
     finally:
         conn.close()
@@ -92,9 +83,7 @@ def login():
     password = data.get("password")
 
     if not email or not password:
-        return jsonify({
-            "error": "Email and password are required"
-        }), 400
+        return jsonify({"error": "Email and password are required"}), 400
 
     email = email.strip().lower()
 
@@ -107,33 +96,31 @@ def login():
         FROM users
         WHERE email = ?
         """,
-        (email,)
+        (email,),
     )
 
     user = cursor.fetchone()
     conn.close()
 
     if user is None:
-        return jsonify({
-            "error": "Invalid email or password"
-        }), 401
+        return jsonify({"error": "Invalid email or password"}), 401
 
     if not check_password_hash(user["password_hash"], password):
-        return jsonify({
-            "error": "Invalid email or password"
-        }), 401
+        return jsonify({"error": "Invalid email or password"}), 401
 
     payload = {
         "userId": user["id"],
         "role": user["role"],
-        "exp": datetime.now(timezone.utc) + timedelta(hours=2)
+        "exp": datetime.now(timezone.utc) + timedelta(hours=2),
     }
 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-    return jsonify({
-        "message": "Login successful",
-        "token": token,
-        "userId": user["id"],
-        "role": user["role"]
-    }), 200
+    return jsonify(
+        {
+            "message": "Login successful",
+            "token": token,
+            "userId": user["id"],
+            "role": user["role"],
+        }
+    ), 200
