@@ -65,7 +65,7 @@ def db(tmp_path):
     conn.execute(
         """INSERT INTO appointments
            (patient_id, provider_id, assisting_nurse_id,
-            start_time, end_time, reason, status, created_by)
+            appointment_time, end_time, reason, status, created_by)
            VALUES (1, 1, 2, '2026-01-05T09:00', '2026-01-05T09:30',
                    'Initial visit', 'completed', 1)"""
     )
@@ -101,11 +101,11 @@ NURSE_TOKEN = lambda: token_for(NURSE_USER, "nurse")             # noqa: E731
 
 
 def book(client, token, patient_id=PATIENT_A, provider_id=DOCTOR_PROVIDER,
-         start_time=None, **extra):
+         appointment_time=None, **extra):
     body = {
         "patient_id": patient_id,
         "provider_id": provider_id,
-        "start_time": start_time or slot("09:00"),
+        "appointment_time": appointment_time or slot("09:00"),
     }
     body.update(extra)
     return client.post("/api/appointments", json=body, headers=auth(token))
@@ -117,29 +117,29 @@ def test_patient_books_their_own_appointment(client):
     assert r.status_code == 201, r.get_json()
     body = r.get_json()
     assert body["status"] == "scheduled"
-    assert body["start_time"].endswith("T09:00")
+    assert body["appointment_time"].endswith("T09:00")
     assert body["end_time"].endswith("T09:30"), "a slot is 30 minutes"
 
 
 # --- 2. double booking ----------------------------------------------------
 def test_double_booking_the_same_provider_slot_is_rejected(client):
-    assert book(client, PATIENT_A_TOKEN(), start_time=slot("10:00")).status_code == 201
+    assert book(client, PATIENT_A_TOKEN(), appointment_time=slot("10:00")).status_code == 201
     second = book(client, PATIENT_B_TOKEN(), patient_id=PATIENT_B,
-                  start_time=slot("10:00"))
+                  appointment_time=slot("10:00"))
     assert second.status_code == 409
     assert "already booked" in second.get_json()["error"]
 
 
 # --- 3. past time ---------------------------------------------------------
 def test_booking_in_the_past_is_rejected(client):
-    r = book(client, PATIENT_A_TOKEN(), start_time="2020-01-06T09:00")
+    r = book(client, PATIENT_A_TOKEN(), appointment_time="2020-01-06T09:00")
     assert r.status_code == 400
     assert "past" in r.get_json()["error"].lower()
 
 
 # --- 4. off slot ----------------------------------------------------------
 def test_time_not_on_a_half_hour_boundary_is_rejected(client):
-    r = book(client, PATIENT_A_TOKEN(), start_time=slot("10:15"))
+    r = book(client, PATIENT_A_TOKEN(), appointment_time=slot("10:15"))
     assert r.status_code == 400
     assert "half hour" in r.get_json()["error"]
 
@@ -147,14 +147,14 @@ def test_time_not_on_a_half_hour_boundary_is_rejected(client):
 # --- 5. after hours -------------------------------------------------------
 @pytest.mark.parametrize("hhmm", ["07:30", "17:00", "18:30"])
 def test_outside_clinic_hours_is_rejected(client, hhmm):
-    r = book(client, PATIENT_A_TOKEN(), start_time=slot(hhmm))
+    r = book(client, PATIENT_A_TOKEN(), appointment_time=slot(hhmm))
     assert r.status_code == 400
     assert "clinic hours" in r.get_json()["error"]
 
 
 def test_last_slot_of_the_day_is_bookable(client):
     """16:30 to 17:00 is the final slot and must still be allowed."""
-    assert book(client, PATIENT_A_TOKEN(), start_time=slot("16:30")).status_code == 201
+    assert book(client, PATIENT_A_TOKEN(), appointment_time=slot("16:30")).status_code == 201
 
 
 # --- 6. doctor cannot book ------------------------------------------------
@@ -172,19 +172,19 @@ def test_patient_cannot_book_for_another_patient(client):
 
 # --- 8. nurse can book for a patient --------------------------------------
 def test_nurse_can_book_for_an_assigned_patient(client):
-    r = book(client, NURSE_TOKEN(), patient_id=PATIENT_A, start_time=slot("11:00"))
+    r = book(client, NURSE_TOKEN(), patient_id=PATIENT_A, appointment_time=slot("11:00"))
     assert r.status_code == 201, r.get_json()
 
 
 def test_nurse_cannot_book_for_an_unassigned_patient(client):
-    r = book(client, NURSE_TOKEN(), patient_id=PATIENT_B, start_time=slot("11:30"))
+    r = book(client, NURSE_TOKEN(), patient_id=PATIENT_B, appointment_time=slot("11:30"))
     assert r.status_code == 403
 
 
 # --- 9. availability ------------------------------------------------------
 def test_availability_lists_free_slots_and_excludes_booked_ones(client):
     date = a_future_date()
-    assert book(client, PATIENT_A_TOKEN(), start_time=f"{date}T13:00").status_code == 201
+    assert book(client, PATIENT_A_TOKEN(), appointment_time=f"{date}T13:00").status_code == 201
 
     r = client.get(
         f"/api/appointments/availability?provider_id={DOCTOR_PROVIDER}&date={date}",
@@ -202,7 +202,7 @@ def test_availability_lists_free_slots_and_excludes_booked_ones(client):
 
 def test_cancelling_frees_the_slot_again(client):
     date = a_future_date()
-    created = book(client, PATIENT_A_TOKEN(), start_time=f"{date}T14:00")
+    created = book(client, PATIENT_A_TOKEN(), appointment_time=f"{date}T14:00")
     appointment_id = created.get_json()["id"]
     client.post(f"/api/appointments/{appointment_id}/cancel",
                 headers=auth(PATIENT_A_TOKEN()))
@@ -245,7 +245,7 @@ def test_cancelling_twice_is_rejected(client):
 def test_booking_without_a_token_is_unauthorized(client):
     r = client.post("/api/appointments", json={
         "patient_id": PATIENT_A, "provider_id": DOCTOR_PROVIDER,
-        "start_time": slot("09:00"),
+        "appointment_time": slot("09:00"),
     })
     assert r.status_code == 401
 

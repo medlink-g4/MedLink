@@ -46,11 +46,11 @@ class ValidationError(Exception):
 def parse_slot(raw):
     """Parse an ISO start time and check it is a bookable slot."""
     if not raw:
-        return _bad("start_time is required")
+        return _bad("appointment_time is required")
     try:
         start = datetime.strptime(str(raw)[:16], TIME_FORMAT)
     except ValueError:
-        return _bad(f"start_time must look like 2026-10-15T09:30, got {raw!r}")
+        return _bad(f"appointment_time must look like 2026-10-15T09:30, got {raw!r}")
 
     if start.minute % SLOT_MINUTES or start.second:
         _bad(
@@ -96,7 +96,7 @@ def taken(conn, column, who, start):
     """Is this provider or patient already booked at this time?"""
     row = conn.execute(
         f"""SELECT 1 FROM appointments
-            WHERE {column} = ? AND start_time = ? AND status != 'cancelled'
+            WHERE {column} = ? AND appointment_time = ? AND status != 'cancelled'
             LIMIT 1""",
         (who, fmt(start)),
     ).fetchone()
@@ -117,7 +117,7 @@ def book():
         # Whose appointment this is decides whether the caller may book it.
         enforce_patient_scope(patient_id)
 
-        start = parse_slot(data.get("start_time"))
+        start = parse_slot(data.get("appointment_time"))
         end = slot_end(start)
 
         conn = get_db()
@@ -143,7 +143,7 @@ def book():
             cur = conn.execute(
                 """INSERT INTO appointments
                    (patient_id, provider_id, assisting_nurse_id,
-                    start_time, end_time, reason, status, created_by)
+                    appointment_time, end_time, reason, status, created_by)
                    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
                 (
                     patient_id,
@@ -168,7 +168,7 @@ def book():
         "id": appointment_id,
         "patient_id": patient_id,
         "provider_id": provider_id,
-        "start_time": fmt(start),
+        "appointment_time": fmt(start),
         "end_time": fmt(end),
         "status": "scheduled",
     }), 201
@@ -226,11 +226,11 @@ def availability():
     conn = get_db()
     try:
         booked = {
-            r["start_time"]
+            r["appointment_time"]
             for r in conn.execute(
-                """SELECT start_time FROM appointments
+                """SELECT appointment_time FROM appointments
                    WHERE provider_id = ? AND status != 'cancelled'
-                     AND start_time LIKE ?""",
+                     AND appointment_time LIKE ?""",
                 (provider_id, f"{date_str}T%"),
             )
         }
@@ -261,11 +261,11 @@ def list_appointments():
     try:
         if scope == ALL:
             rows = conn.execute(
-                "SELECT * FROM appointments ORDER BY start_time"
+                "SELECT * FROM appointments ORDER BY appointment_time"
             ).fetchall()
         elif scope == OWN:
             rows = conn.execute(
-                "SELECT * FROM appointments WHERE patient_id = ? ORDER BY start_time",
+                "SELECT * FROM appointments WHERE patient_id = ? ORDER BY appointment_time",
                 (g.auth.get("patient_id"),),
             ).fetchall()
         elif scope == ASSIGNED:
@@ -273,7 +273,7 @@ def list_appointments():
             rows = conn.execute(
                 """SELECT * FROM appointments
                    WHERE provider_id = ? OR assisting_nurse_id = ?
-                   ORDER BY start_time""",
+                   ORDER BY appointment_time""",
                 (pid, pid),
             ).fetchall()
         else:

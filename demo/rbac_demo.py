@@ -81,7 +81,7 @@ def build_database(tmpdir):
 
         INSERT INTO appointments
             (patient_id, provider_id, assisting_nurse_id,
-             start_time, end_time, reason, status, created_by)
+             appointment_time, end_time, reason, status, created_by)
         VALUES (1, 1, 2, '2026-09-23T10:00', '2026-09-23T10:30',
                 'Blood pressure review', 'scheduled', 1);
 

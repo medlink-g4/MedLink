@@ -51,7 +51,7 @@ def make_assigned(conn, doctor_provider_id, nurse_provider_id, patient_id):
         """
         INSERT INTO appointments
             (patient_id, provider_id, assisting_nurse_id,
-             start_time, end_time, reason, status, created_by)
+             appointment_time, end_time, reason, status, created_by)
         VALUES (?, ?, ?, '2026-09-21T10:00', '2026-09-21T10:30',
                 'Follow-up', 'scheduled', 1)
         """,
