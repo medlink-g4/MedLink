@@ -65,7 +65,7 @@ def db(tmp_path):
     conn.execute(
         """INSERT INTO appointments
            (patient_id, provider_id, assisting_nurse_id,
-            appointment_time, end_time, reason, status, created_by)
+            appointment_time, end_appointment_time, reason, status, created_by)
            VALUES (1, 1, 2, '2026-01-05T09:00', '2026-01-05T09:30',
                    'Initial visit', 'completed', 1)"""
     )
@@ -118,7 +118,7 @@ def test_patient_books_their_own_appointment(client):
     body = r.get_json()
     assert body["status"] == "scheduled"
     assert body["appointment_time"].endswith("T09:00")
-    assert body["end_time"].endswith("T09:30"), "a slot is 30 minutes"
+    assert body["end_appointment_time"].endswith("T09:30"), "a slot is 30 minutes"
 
 
 # --- 2. double booking ----------------------------------------------------

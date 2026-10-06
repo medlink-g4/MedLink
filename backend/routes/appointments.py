@@ -143,7 +143,7 @@ def book():
             cur = conn.execute(
                 """INSERT INTO appointments
                    (patient_id, provider_id, assisting_nurse_id,
-                    appointment_time, end_time, reason, status, created_by)
+                    appointment_time, end_appointment_time, reason, status, created_by)
                    VALUES (?, ?, ?, ?, ?, ?, 'scheduled', ?)""",
                 (
                     patient_id,
@@ -169,7 +169,7 @@ def book():
         "patient_id": patient_id,
         "provider_id": provider_id,
         "appointment_time": fmt(start),
-        "end_time": fmt(end),
+        "end_appointment_time": fmt(end),
         "status": "scheduled",
     }), 201
 

@@ -43,7 +43,7 @@ cursor.execute("""
         provider_id INTEGER NOT NULL,        -- the doctor
         assisting_nurse_id INTEGER,          -- optional nurse, can be NULL
         appointment_time TEXT NOT NULL,      -- start, ISO 8601 e.g. 2026-10-15T11:00
-        end_time TEXT NOT NULL,
+        end_appointment_time TEXT NOT NULL,
         reason TEXT,
         status TEXT NOT NULL DEFAULT 'scheduled'
             CHECK (status IN ('scheduled', 'completed', 'cancelled')),
