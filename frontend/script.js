@@ -92,12 +92,17 @@ function loadPatientDashboard() {
     const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
 
+    // Show the logged-in patient's name.
     welcome.textContent = `Welcome, ${currentUser.name}`;
+
+    // Clear cards from the previous display.
     appointmentsList.replaceChildren();
 
+    // Set today's date to midnight, so an appointment today counts as upcoming.
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // Keep this patient's scheduled appointments that are today or later.
     const upcomingAppointments = mockAppointments
         .filter(appointment => {
             if (
@@ -106,11 +111,17 @@ function loadPatientDashboard() {
             ) {
                 return false;
             }
-            const appointmentDate = new Date(`${appointment.date}T00:00:00`);
-            return !Number.isNaN(appointmentDate.getTime()) && appointmentDate >= today;
+
+            const appointmentDate =
+                new Date(`${appointment.date}T00:00:00`);
+
+            return !Number.isNaN(appointmentDate.getTime()) &&
+                appointmentDate >= today;
         })
+        // Put the soonest appointment first.
         .sort((a, b) => a.date.localeCompare(b.date));
 
+    // Show a helpful message if there are no upcoming appointments.
     if (upcomingAppointments.length === 0) {
         const emptyMessage = document.createElement('p');
         emptyMessage.className = 'no-data';
@@ -119,6 +130,7 @@ function loadPatientDashboard() {
         return;
     }
 
+    // Make one card for every upcoming appointment.
     upcomingAppointments.forEach(appointment => {
         const card = document.createElement('div');
         card.className = 'appointment-card';
@@ -137,6 +149,8 @@ function loadPatientDashboard() {
 
         card.append(doctorName, date, time, status);
 
+        
+        // the separate appointment cancellation task.
         const cancelButton = document.createElement('button');
         cancelButton.type = 'button';
         cancelButton.className = 'btn-secondary';
@@ -149,6 +163,7 @@ function loadPatientDashboard() {
         appointmentsList.appendChild(card);
     });
 }
+
 
 function cancelAppointment(appointmentId) {
     mockAppointments = mockAppointments.filter(apt => apt.id !== appointmentId);
