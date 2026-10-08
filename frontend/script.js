@@ -88,27 +88,81 @@ function handleLogout() {
 
 // ===== PATIENT DASHBOARD LOGIC =====
 function loadPatientDashboard() {
-    // Update welcome message
-    document.getElementById('patientWelcome').textContent = `Welcome, ${currentUser.name}`;
-    
-    // Load appointments for this patient
-    const userAppointments = mockAppointments.filter(apt => apt.patientId === currentUser.id);
+    const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
-    
-    if (userAppointments.length === 0) {
-        appointmentsList.innerHTML = '<p class="no-data">No upcoming appointments</p>';
-    } else {
-        appointmentsList.innerHTML = userAppointments.map(apt => `
-            <div class="appointment-card">
-                <h3>${apt.doctorName}</h3>
-                <p><strong>Date:</strong> ${apt.date}</p>
-                <p><strong>Time:</strong> ${apt.time}</p>
-                <p><strong>Status:</strong> ${apt.status}</p>
-                <button class="btn-secondary" onclick="cancelAppointment(${apt.id})">Cancel</button>
-            </div>
-        `).join('');
+
+    // Show the logged-in patient's name.
+    welcome.textContent = `Welcome, ${currentUser.name}`;
+
+    // Clear cards from the previous display.
+    appointmentsList.replaceChildren();
+
+    // Set today's date to midnight, so an appointment today counts as upcoming.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Keep this patient's scheduled appointments that are today or later.
+    const upcomingAppointments = mockAppointments
+        .filter(appointment => {
+            if (
+                appointment.patientId !== currentUser.id ||
+                appointment.status !== 'scheduled'
+            ) {
+                return false;
+            }
+
+            const appointmentDate =
+                new Date(`${appointment.date}T00:00:00`);
+
+            return !Number.isNaN(appointmentDate.getTime()) &&
+                appointmentDate >= today;
+        })
+        // Put the soonest appointment first.
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Show a helpful message if there are no upcoming appointments.
+    if (upcomingAppointments.length === 0) {
+        const emptyMessage = document.createElement('p');
+        emptyMessage.className = 'no-data';
+        emptyMessage.textContent = 'No upcoming appointments';
+        appointmentsList.appendChild(emptyMessage);
+        return;
     }
+
+    // Make one card for every upcoming appointment.
+    upcomingAppointments.forEach(appointment => {
+        const card = document.createElement('div');
+        card.className = 'appointment-card';
+
+        const doctorName = document.createElement('h3');
+        doctorName.textContent = appointment.doctorName;
+
+        const date = document.createElement('p');
+        date.textContent = `Date: ${appointment.date}`;
+
+        const time = document.createElement('p');
+        time.textContent = `Time: ${appointment.time}`;
+
+        const status = document.createElement('p');
+        status.textContent = `Status: ${appointment.status}`;
+
+        card.append(doctorName, date, time, status);
+
+        
+        // the separate appointment cancellation task.
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'btn-secondary';
+        cancelButton.textContent = 'Cancel';
+        cancelButton.addEventListener('click', () => {
+            cancelAppointment(appointment.id);
+        });
+
+        card.appendChild(cancelButton);
+        appointmentsList.appendChild(card);
+    });
 }
+
 
 function cancelAppointment(appointmentId) {
     mockAppointments = mockAppointments.filter(apt => apt.id !== appointmentId);
