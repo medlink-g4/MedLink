@@ -42,13 +42,32 @@ cursor.execute("""
         patient_id INTEGER NOT NULL,
         provider_id INTEGER NOT NULL,        -- the doctor
         assisting_nurse_id INTEGER,          -- optional nurse, can be NULL
-        appointment_time TEXT NOT NULL,
+        appointment_time TEXT NOT NULL,      -- start, ISO 8601 e.g. 2026-10-15T11:00
+        end_appointment_time TEXT NOT NULL,
+        reason TEXT,
         status TEXT NOT NULL DEFAULT 'scheduled'
             CHECK (status IN ('scheduled', 'completed', 'cancelled')),
+        created_by INTEGER NOT NULL,         -- patient or provider who booked
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (patient_id) REFERENCES patients(id),
         FOREIGN KEY (provider_id) REFERENCES providers(id),
-        FOREIGN KEY (assisting_nurse_id) REFERENCES providers(id)
+        FOREIGN KEY (assisting_nurse_id) REFERENCES providers(id),
+        FOREIGN KEY (created_by) REFERENCES users(id)
     )
+""")
+
+# Appointment lookups are always "whose, and when", so index both directions.
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_appt_provider_time
+        ON appointments (provider_id, appointment_time)
+""")
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_appt_patient_time
+        ON appointments (patient_id, appointment_time)
+""")
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_appt_nurse_time
+        ON appointments (assisting_nurse_id, appointment_time)
 """)
 
 cursor.execute("""
