@@ -1,10 +1,7 @@
-// ===== MOCK DATA =====
-const mockUsers = [
-    { id: 1, email: 'patient@email.com', password: 'password123', name: 'John Patient', role: 'patient' },
-    { id: 2, email: 'doctor@email.com', password: 'password123', name: 'Dr. Sarah', role: 'doctor' },
-    { id: 3, email: 'nurse@email.com', password: 'password123', name: 'Nurse Mike', role: 'nurse' }
-];
+// ===== API CONFIG =====
+const API_BASE_URL = 'http://localhost:5000';
 
+// ===== MOCK DATA (still used by the PATIENT dashboard only -- untouched) =====
 const mockDoctors = [
     { id: 1, name: 'Dr. Sarah Johnson', specialty: 'Cardiology' },
     { id: 2, name: 'Dr. Mike Chen', specialty: 'Neurology' },
@@ -19,22 +16,20 @@ let mockAppointments = [
 ];
 
 // ===== CURRENT USER STATE =====
-let currentUser = null;
+let currentUser = null;   // { id, name, role } for display purposes
 let currentRole = null;
+let authToken = null;     // real JWT from /api/auth/login, used for every backend call
 
 // ===== PAGE MANAGER =====
 function showPage(pageId) {
-    // Hide all pages
     const allPages = document.querySelectorAll('.page');
     allPages.forEach(page => page.classList.add('hidden'));
-    
-    // Show the selected page
+
     const selectedPage = document.getElementById(pageId);
     if (selectedPage) {
         selectedPage.classList.remove('hidden');
     }
-    
-    // Show/hide sidebar based on whether user is logged in
+
     const sidebar = document.getElementById('sidebar');
     if (currentUser && pageId !== 'loginPage') {
         sidebar.classList.remove('hidden');
@@ -43,50 +38,56 @@ function showPage(pageId) {
     }
 }
 
-// ===== LOGIN LOGIC =====
-function handleLogin(event) {
+// ===== LOGIN LOGIC (real backend call -- replaces the old mockUsers check) =====
+async function handleLogin(event) {
     event.preventDefault();
-    
+
     const emailInput = document.getElementById('email').value;
     const passwordInput = document.getElementById('password').value;
     const errorMessage = document.getElementById('errorMessage');
-    
-    // Check if user exists and password is correct
-    const user = mockUsers.find(u => 
-        (u.email === emailInput || u.email.split('@')[0] === emailInput) && 
-        u.password === passwordInput
-    );
-    
-    if (user) {
+    errorMessage.textContent = '';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailInput, password: passwordInput })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            errorMessage.textContent = data.error || 'Invalid email or password.';
+            return;
+        }
+
         // Successful login
-        currentUser = user;
-        currentRole = user.role;
-        errorMessage.textContent = '';
-        
-        // Show appropriate dashboard based on role
-        if (user.role === 'patient') {
+        authToken = data.token;
+        currentRole = data.role;
+        currentUser = { id: data.userId, role: data.role, name: emailInput };
+
+        if (data.role === 'patient') {
             loadPatientDashboard();
             showPage('patientDashboard');
-        } else if (user.role === 'doctor') {
-            showPage('doctorDashboard');
-        } else if (user.role === 'nurse') {
-            showPage('nurseDashboard');
+        } else if (data.role === 'doctor' || data.role === 'nurse') {
+            await loadProviderDashboard();
+            showPage('providerDashboard');
         }
-    } else {
-        // Failed login
-        errorMessage.textContent = 'Invalid email/username or password. Try: patient@email.com / password123';
+    } catch (err) {
+        errorMessage.textContent = 'Could not reach the server. Is the backend running?';
     }
 }
 
 function handleLogout() {
     currentUser = null;
     currentRole = null;
+    authToken = null;
     document.getElementById('loginForm').reset();
     document.getElementById('errorMessage').textContent = '';
     showPage('loginPage');
 }
 
-// ===== PATIENT DASHBOARD LOGIC =====
+// ===== PATIENT DASHBOARD LOGIC (unchanged -- still mock data) =====
 function loadPatientDashboard() {
     const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
@@ -170,9 +171,8 @@ function cancelAppointment(appointmentId) {
     alert('Appointment cancelled');
 }
 
-// ===== APPOINTMENT SCHEDULING LOGIC =====
+// ===== APPOINTMENT SCHEDULING LOGIC (unchanged -- still mock data) =====
 function loadAppointmentForm() {
-    // Populate doctor dropdown
     const doctorSelect = document.getElementById('doctorSelect');
     doctorSelect.innerHTML = '<option value="">-- Choose a Doctor --</option>';
     mockDoctors.forEach(doctor => {
@@ -181,22 +181,17 @@ function loadAppointmentForm() {
         option.textContent = `${doctor.name} (${doctor.specialty})`;
         doctorSelect.appendChild(option);
     });
-    
-    // Load time slots
+
     const timeSlots = document.getElementById('timeSlots');
     timeSlots.innerHTML = mockTimeSlots.map(time => `
         <button type="button" class="time-slot-btn" data-time="${time}">${time}</button>
     `).join('');
-    
-    // Add click listeners to time slot buttons
+
     document.querySelectorAll('.time-slot-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
+        btn.addEventListener('click', function (e) {
             e.preventDefault();
-            // Remove active class from all buttons
             document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('active'));
-            // Add active class to clicked button
             this.classList.add('active');
-            // Store selected time
             document.getElementById('selectedTime').value = this.dataset.time;
         });
     });
@@ -204,20 +199,18 @@ function loadAppointmentForm() {
 
 function handleScheduleAppointment(event) {
     event.preventDefault();
-    
+
     const doctorId = document.getElementById('doctorSelect').value;
     const date = document.getElementById('appointmentDate').value;
     const time = document.getElementById('selectedTime').value;
-    
+
     if (!doctorId || !date || !time) {
         alert('Please select doctor, date, and time');
         return;
     }
-    
-    // Find doctor name
+
     const doctor = mockDoctors.find(d => d.id == doctorId);
-    
-    // Create new appointment
+
     const newAppointment = {
         id: mockAppointments.length + 1,
         patientId: currentUser.id,
@@ -227,68 +220,184 @@ function handleScheduleAppointment(event) {
         time: time,
         status: 'scheduled'
     };
-    
+
     mockAppointments.push(newAppointment);
-    
+
     alert('Appointment scheduled successfully!');
     document.getElementById('appointmentForm').reset();
     loadPatientDashboard();
     showPage('patientDashboard');
 }
 
+// ===== PROVIDER (DOCTOR/NURSE) DASHBOARD LOGIC -- REAL BACKEND =====
+// One function serves both roles: /api/dashboard/ already returns the
+// correctly scoped data for whichever role is in the JWT.
+async function loadProviderDashboard() {
+    const welcome = document.getElementById('providerWelcome');
+    welcome.textContent = `Welcome, ${currentRole === 'doctor' ? 'Dr.' : 'Nurse'} (${currentUser.name})`;
+
+    const appointmentsList = document.getElementById('providerAppointmentsList');
+    const patientsList = document.getElementById('providerPatientsList');
+    const recordsList = document.getElementById('providerRecordsList');
+
+    appointmentsList.replaceChildren();
+    patientsList.replaceChildren();
+    recordsList.replaceChildren();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/dashboard/`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            renderEmpty(appointmentsList, data.error || 'Could not load dashboard');
+            renderEmpty(patientsList, '');
+            renderEmpty(recordsList, '');
+            return;
+        }
+
+        renderAppointments(appointmentsList, data.appointments);
+        renderPatients(patientsList, data.patients);
+        renderRecords(recordsList, data.medical_records);
+    } catch (err) {
+        renderEmpty(appointmentsList, 'Could not reach the server.');
+    }
+}
+
+function renderEmpty(container, message) {
+    if (!message) return;
+    const emptyMessage = document.createElement('p');
+    emptyMessage.className = 'no-data';
+    emptyMessage.textContent = message;
+    container.appendChild(emptyMessage);
+}
+
+function renderAppointments(container, appointments) {
+    if (!appointments || appointments.length === 0) {
+        renderEmpty(container, 'No appointments');
+        return;
+    }
+    appointments.forEach(appt => {
+        const card = document.createElement('div');
+        card.className = 'appointment-card';
+
+        const name = document.createElement('h3');
+        name.textContent = appt.patient_name;
+
+        const time = document.createElement('p');
+        time.textContent = `Time: ${appt.appointment_time}`;
+
+        const status = document.createElement('p');
+        status.textContent = `Status: ${appt.status}`;
+
+        card.append(name, time, status);
+        container.appendChild(card);
+    });
+}
+
+function renderPatients(container, patients) {
+    if (!patients || patients.length === 0) {
+        renderEmpty(container, 'No assigned patients');
+        return;
+    }
+    patients.forEach(patient => {
+        const card = document.createElement('div');
+        card.className = 'appointment-card';
+
+        const name = document.createElement('h3');
+        name.textContent = patient.name;
+
+        const email = document.createElement('p');
+        email.textContent = `Email: ${patient.email}`;
+
+        const phone = document.createElement('p');
+        phone.textContent = `Phone: ${patient.phone || 'N/A'}`;
+
+        card.append(name, email, phone);
+        container.appendChild(card);
+    });
+}
+
+function renderRecords(container, records) {
+    if (!records || records.length === 0) {
+        renderEmpty(container, 'No recent medical records');
+        return;
+    }
+    records.forEach(record => {
+        const card = document.createElement('div');
+        card.className = 'appointment-card';
+
+        const name = document.createElement('h3');
+        name.textContent = record.patient_name;
+
+        const diagnosis = document.createElement('p');
+        diagnosis.textContent = `Diagnosis: ${record.diagnosis || 'N/A'}`;
+
+        const prescription = document.createElement('p');
+        prescription.textContent = `Prescription: ${record.prescription || 'N/A'}`;
+
+        const date = document.createElement('p');
+        date.textContent = `Date: ${record.record_date}`;
+
+        card.append(name, diagnosis, prescription, date);
+        container.appendChild(card);
+    });
+}
+
 // ===== EVENT LISTENERS =====
-document.addEventListener('DOMContentLoaded', function() {
-    // Login form
+document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
-    
-    // Forgot password link
-    document.querySelector('.forgot-password').addEventListener('click', function(e) {
+
+    document.querySelector('.forgot-password').addEventListener('click', function (e) {
         e.preventDefault();
         alert('Password reset functionality coming soon!');
     });
-    
-    // Schedule new appointment button
-    document.getElementById('scheduleNewBtn').addEventListener('click', function() {
+
+    document.getElementById('scheduleNewBtn').addEventListener('click', function () {
         loadAppointmentForm();
         showPage('appointmentScheduling');
     });
-    
-    // Appointment form
+
     document.getElementById('appointmentForm').addEventListener('submit', handleScheduleAppointment);
-    document.getElementById('cancelAppointmentBtn').addEventListener('click', function() {
+    document.getElementById('cancelAppointmentBtn').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    
-    // Sidebar navigation
+
     document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', function(e) {
+        link.addEventListener('click', function (e) {
             e.preventDefault();
-            const pageId = this.getAttribute('data-page');
-            if (pageId) {
-                showPage(pageId);
+            let pageId = this.getAttribute('data-page');
+            if (!pageId) return;
+
+            // The sidebar's "Appointments" link is shared across all roles,
+            // but it points at the PATIENT mock dashboard specifically.
+            // A doctor/nurse clicking it would land on a page that only
+            // re-renders for a patient login, showing stale leftover
+            // content from whoever last logged in as a patient. Send
+            // doctor/nurse back to their own dashboard instead.
+            if (pageId === 'patientDashboard' && (currentRole === 'doctor' || currentRole === 'nurse')) {
+                pageId = 'providerDashboard';
             }
+
+            showPage(pageId);
         });
     });
-    
-    // Logout
-    document.getElementById('logoutLink').addEventListener('click', function(e) {
+
+    document.getElementById('logoutLink').addEventListener('click', function (e) {
         e.preventDefault();
         handleLogout();
     });
-    
-    // Back buttons
-    document.getElementById('backBtn1').addEventListener('click', function() {
+
+    document.getElementById('backBtn1').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    document.getElementById('backBtn2').addEventListener('click', function() {
+    document.getElementById('backBtn2').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    document.getElementById('backBtn3').addEventListener('click', function() {
+    document.getElementById('backBtn3').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    document.getElementById('backBtn4').addEventListener('click', handleLogout);
-    document.getElementById('backBtn5').addEventListener('click', handleLogout);
-    
-    // Show login page on load
+
     showPage('loginPage');
 });

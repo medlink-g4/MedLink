@@ -1,3 +1,4 @@
 Flask
 PyJWT
 pytest
+flask-cors
