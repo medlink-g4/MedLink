@@ -59,10 +59,11 @@ PERMISSIONS = {
             "update": ASSIGNED,
             "update_vitals": ASSIGNED,
         },
+        # Doctors are view only on appointments. Booking and cancelling are
+        # done by the patient or by a nurse on their behalf; a doctor may
+        # still annotate an appointment they are assigned to.
         "appointments": {
             "view": ASSIGNED,
-            "create": ASSIGNED,
-            "cancel": ASSIGNED,
             "note": ASSIGNED,
         },
         "providers": {"view": ALL, "edit": OWN},
