@@ -2,11 +2,11 @@
 // Patient detail page for doctors and nurses (Sprint 3: tasks 3.3 / 3.4)
 //
 //   Doctor : view patient info, edit it, record + view vitals
-//   Nurse  : view patient info (read-only), record + view vitals
+//   Nurse  : view patient info, edit it, record + view vitals
 //
-// Hiding the edit form from nurses is only for a cleaner screen. The real
-// rule is enforced by the backend (permissions.py): a nurse who sends the
-// edit request anyway gets a 403.
+// Who may edit or record is decided by the backend (permissions.py); this
+// page only shows the forms. A request the server refuses comes back as a
+// 403 and the message is shown.
 //
 // Loaded AFTER script.js and relies on its globals:
 //   API_BASE_URL, authToken, currentRole, showPage(), loadProviderDashboard()

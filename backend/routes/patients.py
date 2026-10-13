@@ -11,7 +11,7 @@ require_permission(), so the PERMISSIONS matrix in permissions.py stays the
 single source of truth. Today that matrix means:
 
     doctor   view + edit assigned patients, view + record vitals
-    nurse    view assigned patients, view + record vitals, NO patient edit
+    nurse    view + edit assigned patients, view + record vitals
     patient  view + edit own info, view own vitals, cannot record vitals
 
 Every route takes a patient_id URL parameter, so the decorator also enforces
@@ -24,7 +24,7 @@ latest one is what shows as current and the older ones stay as history.
 
 import re
 import sqlite3
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 from flask import Blueprint, g, jsonify, request
 from routes.permissions import ForbiddenError, get_db, require_permission
@@ -264,7 +264,7 @@ def record_vitals(patient_id):
     values = [
         patient_id,
         provider_id,
-        datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         *clean.values(),
     ]
     conn = _conn()
