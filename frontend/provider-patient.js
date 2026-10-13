@@ -312,9 +312,9 @@
         buildPage();
         currentPatientId = patientId;
 
-        const isDoctor = currentRole === 'doctor';
-        show('pdEditForm', isDoctor);
-        show('pdNurseNote', !isDoctor);
+
+        show('pdEditForm', true);
+        show('pdNurseNote', false);
         show('pdVitalsSection', true);
         show('pdInfoSection', true);
         setMessage('pdInfoMsg', '');
