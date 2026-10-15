@@ -281,9 +281,7 @@ async function loadMedicalHistory() {
     recordsList.replaceChildren();
     medicationsList.replaceChildren();
 
-    // TEMPORARY: Alex's example URLs use patient 1.
-    // In the real application, this would be the logged-in patient's ID.
-    const patientId = 1;
+    
 
     try {
         const headers = {
@@ -292,11 +290,11 @@ async function loadMedicalHistory() {
 
         const [recordsResponse, medicationsResponse] = await Promise.all([
             fetch(
-                `${API_BASE_URL}/api/medical-records/patient/${patientId}`,
+                `${API_BASE_URL}/api/medical-records/me`,   
                 { headers }
             ),
             fetch(
-                `${API_BASE_URL}/api/medical-records/patient/${patientId}/medications`,
+                `${API_BASE_URL}/api/medical-records/me/medications`,  
                 { headers }
             )
         ]);
