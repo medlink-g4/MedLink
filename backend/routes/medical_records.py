@@ -74,29 +74,8 @@ RECORD_SELECT = """
 """
 
 
-@medical_records_bp.route("/patient/<int:patient_id>", methods=["GET"])
-@require_permission("medical_records", "view")
-def list_records(patient_id):
-    """Full medical history for one patient, newest first."""
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            RECORD_SELECT + " WHERE r.patient_id = ? ORDER BY r.record_date DESC, r.id DESC",
-            (patient_id,),
-        ).fetchall()
-    finally:
-        conn.close()
-    return jsonify([row_to_record(r) for r in rows]), 200
-
-
-@medical_records_bp.route("/patient/<int:patient_id>/medications", methods=["GET"])
-@require_permission("medical_records", "view")
-def list_medications(patient_id):
-    """The prescribing subset of the same records, newest first.
-
-    Medications are not stored separately. This returns only records whose
-    prescription is set, with the diagnosis it was prescribed for.
-    """
+def medications_for(patient_id):
+    """Records that carry a prescription, newest first."""
     conn = get_db()
     try:
         rows = conn.execute(
@@ -109,7 +88,7 @@ def list_medications(patient_id):
         ).fetchall()
     finally:
         conn.close()
-    return jsonify([
+    return [
         {
             "record_id": r["id"],
             "patient_id": r["patient_id"],
@@ -119,7 +98,72 @@ def list_medications(patient_id):
             "prescribed_on": r["record_date"],
         }
         for r in rows
-    ]), 200
+    ]
+
+
+def fetch_records(patient_id):
+    conn = get_db()
+    try:
+        return conn.execute(
+            RECORD_SELECT + " WHERE r.patient_id = ? ORDER BY r.record_date DESC, r.id DESC",
+            (patient_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def own_patient_id():
+    """The caller's own patients.id, for the /me routes.
+
+    Only a patient has one. The login token carries users.id, and a patient's
+    users.id is a different number from their patients.id, so the frontend
+    cannot work this out for itself. These routes exist so it does not have
+    to: the server resolves the caller from the token.
+    """
+    patient_id = g.auth.get("patient_id")
+    if patient_id is None:
+        return None, (jsonify({
+            "error": "This endpoint is for patients. Use /patient/<id> instead."
+        }), 400)
+    return patient_id, None
+
+
+@medical_records_bp.route("/me", methods=["GET"])
+@require_permission("medical_records", "view")
+def list_my_records():
+    """The signed-in patient's own history. No id needed from the caller."""
+    patient_id, err = own_patient_id()
+    if err:
+        return err
+    return jsonify([row_to_record(r) for r in fetch_records(patient_id)]), 200
+
+
+@medical_records_bp.route("/me/medications", methods=["GET"])
+@require_permission("medical_records", "view")
+def list_my_medications():
+    """The signed-in patient's own medications."""
+    patient_id, err = own_patient_id()
+    if err:
+        return err
+    return jsonify(medications_for(patient_id)), 200
+
+
+@medical_records_bp.route("/patient/<int:patient_id>", methods=["GET"])
+@require_permission("medical_records", "view")
+def list_records(patient_id):
+    """Full medical history for one patient, newest first."""
+    return jsonify([row_to_record(r) for r in fetch_records(patient_id)]), 200
+
+
+@medical_records_bp.route("/patient/<int:patient_id>/medications", methods=["GET"])
+@require_permission("medical_records", "view")
+def list_medications(patient_id):
+    """The prescribing subset of the same records, newest first.
+
+    Medications are not stored separately. This returns only records whose
+    prescription is set, with the diagnosis it was prescribed for.
+    """
+    return jsonify(medications_for(patient_id)), 200
 
 
 @medical_records_bp.route("", methods=["POST"])

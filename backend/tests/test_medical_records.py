@@ -252,3 +252,40 @@ def test_expired_token_is_unauthorized(client):
     bad = {"Authorization":
            f"Bearer {token_for(PATIENT_A_USER, 'patient', timedelta(seconds=-60))}"}
     assert client.get(f"{RECORDS}/patient/{PATIENT_A}", headers=bad).status_code == 401
+
+
+# --- the /me routes, so the frontend never needs a patients.id ------------
+def test_me_returns_the_signed_in_patients_own_history(client):
+    """A patient's users.id and patients.id differ, so /me avoids the trap."""
+    r = client.get(f"{RECORDS}/me", headers=PATIENT_A_AUTH())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert len(body) == 2
+    assert all(rec["patient_id"] == PATIENT_A for rec in body)
+
+
+def test_me_is_scoped_to_the_caller_not_a_shared_list(client):
+    """Patient B sees only their own record through the same URL."""
+    r = client.get(f"{RECORDS}/me", headers=PATIENT_B_AUTH())
+    assert r.status_code == 200
+    body = r.get_json()
+    assert len(body) == 1
+    assert body[0]["patient_id"] == PATIENT_B
+
+
+def test_me_medications_returns_only_the_callers_prescriptions(client):
+    r = client.get(f"{RECORDS}/me/medications", headers=PATIENT_A_AUTH())
+    assert r.status_code == 200
+    meds = r.get_json()
+    assert len(meds) == 1
+    assert meds[0]["medication"] == "Lisinopril 10mg"
+
+
+def test_me_tells_a_provider_to_use_the_patient_route(client):
+    r = client.get(f"{RECORDS}/me", headers=DOCTOR_AUTH())
+    assert r.status_code == 400
+    assert "for patients" in r.get_json()["error"]
+
+
+def test_me_still_requires_a_token(client):
+    assert client.get(f"{RECORDS}/me").status_code == 401
