@@ -113,13 +113,46 @@
     </div>
 
     <!-- MESSAGES PAGE -->
-    <div id="messages" class="page hidden">
-        <div class="dashboard-container">
-            <h1>Messages</h1>
-            <p>Messages will appear here. (In development)</p>
-            <button class="btn-secondary" id="backBtn2">Back</button>
+<div id="messages" class="page hidden">
+    <div class="dashboard-container">
+        <h1>Messages</h1>
+
+        <div id="messagesContacts">
+            <h3>Your Conversations</h3>
+            <p id="messagesStatus">Loading conversations...</p>
         </div>
+
+        <div id="messagesConversation" class="hidden">
+            <button class="btn-secondary" id="backToContactsBtn">
+                Back to Conversations
+            </button>
+
+            <h3 id="conversationTitle">Conversation</h3>
+
+            <div id="messagesList" aria-live="polite">
+            </div>
+
+            <form id="messageForm">
+                <label for="messageInput">Your message</label>
+                <textarea
+                    id="messageInput"
+                    rows="3"
+                    maxlength="5000"
+                    placeholder="Type your message..."
+                    required
+                ></textarea>
+
+                <button type="submit" class="btn-primary">
+                    Send Message
+                </button>
+            </form>
+
+            <p id="messageStatus" aria-live="polite"></p>
+        </div>
+
+        <button class="btn-secondary" id="backBtn2">Back</button>
     </div>
+</div>
 
     <!-- PROFILE PAGE -->
     <div id="profile" class="page hidden">

@@ -49,6 +49,7 @@ PERMISSIONS = {
         "medical_records": {"view": OWN},
         "appointments": {"view": OWN, "create": OWN, "cancel": OWN},
         "providers": {"view": ALL},
+        "messages": {"view": OWN, "create": OWN},
     },
     DOCTOR: {
         "users": {"view": OWN, "edit": OWN},
@@ -67,6 +68,7 @@ PERMISSIONS = {
             "note": ASSIGNED,
         },
         "providers": {"view": ALL, "edit": OWN},
+        "messages": {"view": ASSIGNED, "create": ASSIGNED},
     },
     NURSE: {
         "users": {"view": OWN, "edit": OWN},
@@ -79,6 +81,7 @@ PERMISSIONS = {
             "note": ASSIGNED,
         },
         "providers": {"view": ALL, "edit": OWN},
+        "messages": {"view": ASSIGNED, "create": ASSIGNED},
     },
 }
 

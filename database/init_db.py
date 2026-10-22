@@ -81,6 +81,23 @@ cursor.execute("""
         FOREIGN KEY (provider_id) REFERENCES providers(id)
     )
 """)
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        recipient_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (sender_id) REFERENCES users(id),
+        FOREIGN KEY (recipient_id) REFERENCES users(id),
+        CHECK (sender_id != recipient_id)
+    )
+""")
+
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient
+    ON messages (sender_id, recipient_id, sent_at)
+""")
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS vitals (
