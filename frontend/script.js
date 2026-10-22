@@ -1,6 +1,8 @@
 // ===== API CONFIG =====
 const API_BASE_URL = 'http://localhost:5000';
-
+window.addEventListener('beforeunload', () => {
+    console.log('DEBUG: MedLink page is reloading or closing.');
+});
 // ===== MOCK DATA (still used by the PATIENT dashboard only -- untouched) =====
 const mockDoctors = [
     { id: 1, name: 'Dr. Sarah Johnson', specialty: 'Cardiology' },
@@ -65,6 +67,9 @@ async function handleLogin(event) {
         authToken = data.token;
         currentRole = data.role;
         currentUser = { id: data.userId, role: data.role, name: emailInput };
+        sessionStorage.setItem('authToken', authToken);
+        sessionStorage.setItem('currentRole', currentRole);
+        sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
 
         if (data.role === 'patient') {
             loadPatientDashboard();
@@ -82,6 +87,9 @@ function handleLogout() {
     currentUser = null;
     currentRole = null;
     authToken = null;
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('currentRole');
+    sessionStorage.removeItem('currentUser');
     document.getElementById('loginForm').reset();
     document.getElementById('errorMessage').textContent = '';
     showPage('loginPage');
@@ -363,26 +371,28 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('cancelAppointmentBtn').addEventListener('click', function () {
         showPage('patientDashboard');
     });
+document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function (e) {
+        e.preventDefault();
+        let pageId = this.getAttribute('data-page');
+        if (!pageId) return;
 
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', function (e) {
-            e.preventDefault();
-            let pageId = this.getAttribute('data-page');
-            if (!pageId) return;
+        // Keep doctor/nurse users on their own dashboard.
+        if (
+            pageId === 'patientDashboard' &&
+            (currentRole === 'doctor' || currentRole === 'nurse')
+        ) {
+            pageId = 'providerDashboard';
+        }
 
-            // The sidebar's "Appointments" link is shared across all roles,
-            // but it points at the PATIENT mock dashboard specifically.
-            // A doctor/nurse clicking it would land on a page that only
-            // re-renders for a patient login, showing stale leftover
-            // content from whoever last logged in as a patient. Send
-            // doctor/nurse back to their own dashboard instead.
-            if (pageId === 'patientDashboard' && (currentRole === 'doctor' || currentRole === 'nurse')) {
-                pageId = 'providerDashboard';
-            }
+        showPage(pageId);
 
-            showPage(pageId);
-        });
+        // Load permitted contacts whenever Messages is opened.
+        if (pageId === 'messages') {
+            loadContacts();
+        }
     });
+});
 
     document.getElementById('logoutLink').addEventListener('click', function (e) {
         e.preventDefault();
@@ -392,12 +402,204 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('backBtn1').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    document.getElementById('backBtn2').addEventListener('click', function () {
-        showPage('patientDashboard');
-    });
+   document.getElementById('backBtn2').addEventListener('click', function () {
+    returnToContacts();
+    showPage(currentRole === 'doctor' || currentRole === 'nurse'
+        ? 'providerDashboard'
+        : 'patientDashboard');
+});
+
+document.getElementById('messageForm').addEventListener('submit', sendMessage);
+
+document.getElementById('backToContactsBtn').addEventListener('click', returnToContacts);
+    
     document.getElementById('backBtn3').addEventListener('click', function () {
         showPage('patientDashboard');
     });
 
+    const savedToken = sessionStorage.getItem('authToken');
+const savedRole = sessionStorage.getItem('currentRole');
+const savedUser = sessionStorage.getItem('currentUser');
+
+if (savedToken && savedRole && savedUser) {
+    try {
+        authToken = savedToken;
+        currentRole = savedRole;
+        currentUser = JSON.parse(savedUser);
+
+        if (currentRole === 'patient') {
+            loadPatientDashboard();
+            showPage('patientDashboard');
+        } else if (currentRole === 'doctor' || currentRole === 'nurse') {
+            loadProviderDashboard().then(() => showPage('providerDashboard'));
+        } else {
+            handleLogout();
+        }
+    } catch (error) {
+        handleLogout();
+    }
+} else {
     showPage('loginPage');
+}
 });
+// ===== MESSAGING LOGIC =====
+
+let activeConversationUserId = null;
+
+async function openConversation(otherUserId, otherUserName) {
+    activeConversationUserId = otherUserId;
+
+    document.getElementById('messagesContacts').classList.add('hidden');
+    document.getElementById('messagesConversation').classList.remove('hidden');
+    document.getElementById('conversationTitle').textContent = otherUserName;
+
+    await loadMessages();
+}
+
+async function loadMessages() {
+    const messagesList = document.getElementById('messagesList');
+    const messageStatus = document.getElementById('messageStatus');
+
+    messagesList.replaceChildren();
+    messageStatus.textContent = 'Loading messages...';
+
+    try {
+        const response = await fetch(
+            `${API_BASE_URL}/api/messages?with_user_id=${activeConversationUserId}`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            messageStatus.textContent = data.error || 'Could not load messages.';
+            return;
+        }
+
+        if (data.length === 0) {
+            messageStatus.textContent = 'No messages yet. Start the conversation!';
+            return;
+        }
+
+        data.forEach(message => {
+            const item = document.createElement('p');
+            item.textContent =
+                `${message.sender_id === currentUser.id ? 'You' : 'Them'}: ${message.message}`;
+            messagesList.appendChild(item);
+        });
+
+        messageStatus.textContent = '';
+    } catch (error) {
+        messageStatus.textContent = 'Could not connect to the server.';
+    }
+}
+
+async function sendMessage(event) {
+    event.preventDefault();
+
+    const messageInput = document.getElementById('messageInput');
+    const messageStatus = document.getElementById('messageStatus');
+    const message = messageInput.value.trim();
+
+    if (!message || !activeConversationUserId) {
+        return;
+    }
+
+    messageStatus.textContent = 'Sending...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/messages`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({
+                recipient_id: activeConversationUserId,
+                message: message
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            messageStatus.textContent = data.error || 'Could not send message.';
+            return;
+        }
+
+  
+        messageInput.value = '';
+        await loadMessages();
+
+        messageStatus.textContent = 'Message sent successfully.';
+    } catch (error) {
+        messageStatus.textContent = 'Could not connect to the server.';
+    }
+    
+}
+
+
+
+function returnToContacts() {
+    activeConversationUserId = null;
+
+    document.getElementById('messagesConversation').classList.add('hidden');
+    document.getElementById('messagesContacts').classList.remove('hidden');
+    document.getElementById('messageStatus').textContent = '';
+}
+async function loadContacts() {
+    const contactsContainer = document.getElementById('messagesContacts');
+    const messagesStatus = document.getElementById('messagesStatus');
+
+    messagesStatus.textContent = 'Loading conversations...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/messages/contacts`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            messagesStatus.textContent =
+                data.error || 'Could not load conversations.';
+            return;
+        }
+
+        contactsContainer.querySelectorAll('.contact-button').forEach(button => {
+            button.remove();
+        });
+
+        if (data.length === 0) {
+            messagesStatus.textContent =
+                'No available contacts found. You need an assigned patient-staff relationship to message someone.';
+            return;
+        }
+
+        messagesStatus.textContent = '';
+
+        data.forEach(contact => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'contact-button btn-secondary';
+            button.textContent = `${contact.role} (User ID: ${contact.id})`;
+
+            button.addEventListener('click', () => {
+                openConversation(
+                    contact.id,
+                    `${contact.role} (User ID: ${contact.id})`
+                );
+            });
+
+            contactsContainer.appendChild(button);
+        });
+    } catch (error) {
+        messagesStatus.textContent = 'Could not connect to the server.';
+    }
+}
