@@ -404,6 +404,12 @@ function renderPatients(container, patients) {
         phone.textContent = `Phone: ${patient.phone || 'N/A'}`;
 
         card.append(name, email, phone);
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.className = 'btn-secondary';
+        viewButton.textContent = currentRole === 'doctor' ? 'View / Edit' : 'View / Record Vitals';
+        viewButton.addEventListener('click', () => openPatientDetail(patient.id));
+        card.appendChild(viewButton);
         container.appendChild(card);
     });
 }
