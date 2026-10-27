@@ -69,7 +69,6 @@ cursor.execute("""
     CREATE INDEX IF NOT EXISTS idx_appt_nurse_time
         ON appointments (assisting_nurse_id, appointment_time)
 """)
-
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS medical_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -100,6 +99,28 @@ cursor.execute("""
     ON messages (sender_id, recipient_id, sent_at)
 """)
 
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS vitals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL,
+        recorded_by INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL,
+        temperature_f REAL,
+        systolic_bp INTEGER,
+        diastolic_bp INTEGER,
+        heart_rate INTEGER,
+        respiratory_rate INTEGER,
+        oxygen_saturation INTEGER,
+        weight_lb REAL,
+        height_in REAL,
+        notes TEXT,
+        FOREIGN KEY (patient_id) REFERENCES patients(id),
+        FOREIGN KEY (recorded_by) REFERENCES providers(id)
+    )
+""")
+
 conn.commit()
 conn.close()
-print("medlink.db created with tables: users, patients, providers, appointments, medical_records")
+print(
+    "medlink.db created with tables: users, patients, providers, appointments, medical_records, vitals"
+)

@@ -4,16 +4,40 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import jwt
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
-DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
 JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
+
+# Self-registration creates patients. Staff accounts are seeded rather than
+# signed up for, because anyone could otherwise register themselves as a
+# doctor and reach every patient record. Set this to 1 only for local work.
+ALLOW_STAFF_SIGNUP = os.environ.get("MEDLINK_ALLOW_STAFF_SIGNUP") == "1"
+
+SELF_SERVICE_ROLES = ["patient"]
+STAFF_ROLES = ["doctor", "nurse"]
+
 auth_bp = Blueprint("auth", __name__)
 
 
+def db_path():
+    """Resolve the database file the same way permissions.py does.
+
+    Previously this was pinned to the repository root, so pointing the app at
+    another database (a test fixture, or a copy in another directory) was
+    silently ignored and every query hit the wrong file.
+    """
+    configured = None
+    try:
+        configured = current_app.config.get("MEDLINK_DB")
+    except RuntimeError:  # outside an application context
+        pass
+    return Path(configured or os.environ.get("MEDLINK_DB") or DEFAULT_DB_PATH)
+
+
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -36,10 +60,20 @@ def register():
     email = email.strip().lower()
     role = role.strip().lower()
 
-    allowed_roles = ["patient", "nurse", "doctor"]
+    allowed_roles = SELF_SERVICE_ROLES + (STAFF_ROLES if ALLOW_STAFF_SIGNUP else [])
+
+    if role not in SELF_SERVICE_ROLES + STAFF_ROLES:
+        return jsonify({"error": "Invalid role"}), 400
 
     if role not in allowed_roles:
-        return jsonify({"error": "Invalid role"}), 400
+        # A doctor or nurse account grants access to other people's records,
+        # so it cannot be created by whoever is filling in the signup form.
+        return jsonify({
+            "error": (
+                f"Cannot self-register as {role}. Staff accounts are created "
+                "by the team rather than through the signup form."
+            )
+        }), 403
 
     password_hash = generate_password_hash(password)
 

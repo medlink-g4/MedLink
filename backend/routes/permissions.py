@@ -72,7 +72,7 @@ PERMISSIONS = {
     },
     NURSE: {
         "users": {"view": OWN, "edit": OWN},
-        "patients": {"view": ASSIGNED},
+        "patients": {"view": ASSIGNED, "edit": ASSIGNED},
         "medical_records": {"view": ASSIGNED, "update_vitals": ASSIGNED},
         "appointments": {
             "view": ASSIGNED,
