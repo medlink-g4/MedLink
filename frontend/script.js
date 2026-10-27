@@ -272,6 +272,95 @@ function renderEmpty(container, message) {
     emptyMessage.textContent = message;
     container.appendChild(emptyMessage);
 }
+/* This function loads and displays the patient's records
+   and medications from Alex's API. */
+async function loadMedicalHistory() {
+    const recordsList = document.getElementById('medicalRecordsList');
+    const medicationsList = document.getElementById('medicationsList');
+
+    recordsList.replaceChildren();
+    medicationsList.replaceChildren();
+
+    
+
+    try {
+        const headers = {
+            'Authorization': `Bearer ${authToken}`
+        };
+
+        const [recordsResponse, medicationsResponse] = await Promise.all([
+            fetch(
+                `${API_BASE_URL}/api/medical-records/me`,   
+                { headers }
+            ),
+            fetch(
+                `${API_BASE_URL}/api/medical-records/me/medications`,  
+                { headers }
+            )
+        ]);
+
+        const records = await recordsResponse.json();
+        const medications = await medicationsResponse.json();
+
+        if (!recordsResponse.ok) {
+            renderEmpty(recordsList, records.error || 'Could not load medical records.');
+        } else if (!Array.isArray(records) || records.length === 0) {
+            renderEmpty(recordsList, 'No medical records found.');
+        } else {
+            records.forEach(record => {
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+
+                const provider = document.createElement('h3');
+                provider.textContent = record.provider_name || 'Provider';
+
+                const diagnosis = document.createElement('p');
+                diagnosis.textContent = `Diagnosis: ${record.diagnosis || 'N/A'}`;
+
+                const prescription = document.createElement('p');
+                prescription.textContent = `Prescription: ${record.prescription || 'N/A'}`;
+
+                const date = document.createElement('p');
+                date.textContent = `Date: ${record.record_date || 'N/A'}`;
+
+                card.append(provider, diagnosis, prescription, date);
+                recordsList.appendChild(card);
+            });
+        }
+
+        if (!medicationsResponse.ok) {
+            renderEmpty(
+                medicationsList,
+                medications.error || 'Could not load medications.'
+            );
+        } else if (!Array.isArray(medications) || medications.length === 0) {
+            renderEmpty(medicationsList, 'No medications found.');
+        } else {
+            medications.forEach(medication => {
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+
+                const name = document.createElement('h3');
+                name.textContent = medication.medication || 'Medication';
+
+                const reason = document.createElement('p');
+                reason.textContent = `For: ${medication.prescribed_for || 'N/A'}`;
+
+                const provider = document.createElement('p');
+                provider.textContent = `Prescribed by: ${medication.prescribed_by || 'N/A'}`;
+
+                const date = document.createElement('p');
+                date.textContent = `Date: ${medication.prescribed_on || 'N/A'}`;
+
+                card.append(name, reason, provider, date);
+                medicationsList.appendChild(card);
+            });
+        }
+    } catch (error) {
+        renderEmpty(recordsList, 'Could not reach the server.');
+        renderEmpty(medicationsList, 'Could not reach the server.');
+    }
+}
 
 function renderAppointments(container, appointments) {
     if (!appointments || appointments.length === 0) {
@@ -378,6 +467,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // doctor/nurse back to their own dashboard instead.
             if (pageId === 'patientDashboard' && (currentRole === 'doctor' || currentRole === 'nurse')) {
                 pageId = 'providerDashboard';
+            }
+
+            if (pageId === 'medicalHistory' && currentRole === 'patient') {
+                loadMedicalHistory();
             }
 
             showPage(pageId);
