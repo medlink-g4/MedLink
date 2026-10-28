@@ -493,7 +493,7 @@ document.querySelectorAll('.nav-link').forEach(link => {
             showPage(pageId);
         });
     });
-});
+
 
     document.getElementById('logoutLink').addEventListener('click', function (e) {
         e.preventDefault();

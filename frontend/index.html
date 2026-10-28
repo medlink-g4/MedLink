@@ -42,6 +42,7 @@
             <a href="#" class="nav-link" data-page="medicalHistory">Medical History</a>
             <a href="#" class="nav-link" data-page="messages">Messages</a>
             <a href="#" class="nav-link" data-page="profile">Profile</a>
+            <a href="#" class="nav-link" data-page="appointmentManager">Manage Appointments</a>
             <hr>
             <a href="#" class="nav-link" id="logoutLink">Logout</a>
         </nav>
@@ -88,6 +89,17 @@
             </form>
         </div>
     </div>
+       <div id="appointmentManager" class="page hidden">
+       <div class="dashboard-container">
+           <h1>Manage Appointments</h1>
+           <p id="amMsg" class="pd-message" role="status"></p>
+           <div id="amBody"></div>
+           <button class="btn-secondary" id="amBackBtn">Back</button>
+       </div>
+   </div>
+
+
+
 
     <!-- MEDICAL HISTORY PAGE -->
     <div id="medicalHistory" class="page hidden">
@@ -197,5 +209,7 @@
 
     <script src="script.js"></script>
     <script src="provider-patient.js"></script>
+    <script src="profile.js"></script>
+    <script src="appointments.js"></script>
 </body>
 </html>
