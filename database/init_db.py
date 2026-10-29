@@ -126,9 +126,63 @@ cursor.execute("""
     )
 """)
 
+# --- Task 4.4: self-service password reset ---------------------------------
+# Only the hash of a reset token is stored. If this table leaks, the rows in
+# it cannot be used to reset anyone's password, the same reason users holds a
+# password_hash rather than a password.
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+""")
+
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_reset_tokens_user
+    ON password_reset_tokens(user_id)
+""")
+
+# --- Task 4.5: activity and audit logging ----------------------------------
+# HIPAA requires a record of who reached which patient's information and when,
+# including the attempts that were refused. It does NOT require, and this
+# table deliberately does not hold, the information itself: no diagnosis,
+# prescription or message text is ever written here. Only who, what resource,
+# which patient, and whether it was allowed.
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        occurred_at TEXT NOT NULL,
+        user_id INTEGER,
+        role TEXT,
+        action TEXT NOT NULL,
+        resource TEXT,
+        patient_id INTEGER,
+        outcome TEXT NOT NULL,
+        detail TEXT,
+        ip_address TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+""")
+
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_audit_log_patient
+    ON audit_log(patient_id, occurred_at)
+""")
+
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_audit_log_user
+    ON audit_log(user_id, occurred_at)
+""")
+
 conn.commit()
 conn.close()
 print(
     f"{DB_PATH} created with tables: users, patients, providers, "
-    "appointments, medical_records, messages, vitals"
+    "appointments, medical_records, messages, vitals, "
+    "password_reset_tokens, audit_log"
 )

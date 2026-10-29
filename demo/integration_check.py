@@ -187,6 +187,74 @@ s, _ = call("POST", "/api/messages", patient,
             {"recipient_id": 9999, "message": "nobody"})
 check("message to a non-existent user is refused", s in (400, 403, 404), True)
 
+print("\n== Password reset (4.4) ==")
+s, body = call("POST", "/api/auth/password-reset/request",
+               body={"email": "patient2@medlink.test"})
+check("reset request for a real account returns 200", s, 200)
+known_reply = body.get("message")
+s, body2 = call("POST", "/api/auth/password-reset/request",
+                body={"email": "definitely-nobody@medlink.test"})
+check("reset request for an unknown account returns 200", s, 200)
+check("both replies are identical", body2.get("message") == known_reply, True)
+
+reset_token = body.get("reset_token")
+if reset_token:
+    print("        MEDLINK_SHOW_RESET_TOKEN is on, exercising the full flow")
+    s, _ = call("POST", "/api/auth/password-reset/confirm",
+                body={"token": reset_token, "new_password": "short"})
+    check("short password is refused", s, 400)
+    s, _ = call("POST", "/api/auth/password-reset/confirm",
+                body={"token": reset_token, "new_password": "brandnewpass1"})
+    check("reset with a valid token succeeds", s, 200)
+    s, _ = call("POST", "/api/auth/login",
+                body={"email": "patient2@medlink.test", "password": "brandnewpass1"})
+    check("the new password logs in", s, 200)
+    s, _ = call("POST", "/api/auth/password-reset/confirm",
+                body={"token": reset_token, "new_password": "anotherpass123"})
+    check("the same token cannot be reused", s, 400)
+    # Put the account back so the script can be run again unchanged.
+    s, again = call("POST", "/api/auth/password-reset/request",
+                    body={"email": "patient2@medlink.test"})
+    if again.get("reset_token"):
+        call("POST", "/api/auth/password-reset/confirm",
+             body={"token": again["reset_token"], "new_password": PASSWORD})
+else:
+    print("        MEDLINK_SHOW_RESET_TOKEN is off, so the token is only in the")
+    print("        server log; skipping the confirm half of the flow.")
+
+s, _ = call("POST", "/api/auth/password-reset/confirm",
+            body={"token": "clearly-not-a-real-token", "new_password": "whatever12"})
+check("an invented token is refused", s, 400)
+s, _ = call("POST", "/api/auth/password-change", patient,
+            {"current_password": "wrong-password", "new_password": "newpass12345"})
+check("password change with the wrong current password is refused", s, 403)
+s, _ = call("POST", "/api/auth/password-change",
+            body={"current_password": PASSWORD, "new_password": "newpass12345"})
+check("password change without a token is refused", s, 401)
+
+print("\n== Audit log (4.5) ==")
+s, trail = call("GET", "/api/audit/me", patient)
+check("patient can read their own access history", s, 200)
+entries = trail.get("entries", []) if isinstance(trail, dict) else []
+print(f"        returned {len(entries)} entry/entries")
+check("the history is not empty", len(entries) > 0, True)
+actors = {e.get("actor_name") for e in entries}
+check("the doctor's reads appear in it", "Dr. Sam Avery" in actors, True)
+blob = json.dumps(trail)
+check("no diagnosis text leaked into the log",
+      "Hypertension" not in blob and "Lisinopril" not in blob, True)
+
+s, _ = call("GET", "/api/audit/patient/1", doctor)
+check("assigned doctor can read patient 1's history", s, 200)
+s, _ = call("GET", "/api/audit/patient/1", patient2)
+check("another patient is refused patient 1's history", s, 403)
+s, _ = call("GET", "/api/audit/me")
+check("reading the audit log with no token is refused", s, 401)
+s, own = call("GET", "/api/audit/me", doctor)
+check("staff read their own activity", s, 200)
+check("staff activity is attributed to them",
+      own.get("user_id") == 3 if isinstance(own, dict) else False, True)
+
 print("\n== Appointments still working after integration (2.4 / 2.5) ==")
 s, _ = call("GET", "/api/appointments", patient)
 check("patient can list appointments", s, 200)

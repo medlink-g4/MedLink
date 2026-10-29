@@ -50,6 +50,8 @@ PERMISSIONS = {
         "appointments": {"view": OWN, "create": OWN, "cancel": OWN},
         "providers": {"view": ALL},
         "messages": {"view": OWN, "create": OWN},
+        # Task 4.5. A patient may read who has reached their own record.
+        "audit": {"view": OWN},
     },
     DOCTOR: {
         "users": {"view": OWN, "edit": OWN},
@@ -69,6 +71,9 @@ PERMISSIONS = {
         },
         "providers": {"view": ALL, "edit": OWN},
         "messages": {"view": ASSIGNED, "create": ASSIGNED},
+        # Task 4.5. Staff read their own activity, and the access history of
+        # patients they are assigned to. Nobody reads the whole log.
+        "audit": {"view": ASSIGNED},
     },
     NURSE: {
         "users": {"view": OWN, "edit": OWN},
@@ -82,6 +87,7 @@ PERMISSIONS = {
         },
         "providers": {"view": ALL, "edit": OWN},
         "messages": {"view": ASSIGNED, "create": ASSIGNED},
+        "audit": {"view": ASSIGNED},
     },
 }
 
@@ -277,6 +283,22 @@ def enforce_patient_scope(target_patient_id):
         )
 
 
+def _audit(action, outcome, **fields):
+    """Write an audit row for task 4.5, without ever failing the request.
+
+    Imported here rather than at module level because routes/audit.py imports
+    this module; doing it at the top would be a circular import. Audit logging
+    is also deliberately optional: if the module or the table is missing, the
+    permission layer still works exactly as before.
+    """
+    try:
+        from routes.audit import record
+
+        record(action, outcome, **fields)
+    except Exception:  # noqa: BLE001 - auditing must never break a request
+        log.exception("Could not write audit entry for %s/%s", action, outcome)
+
+
 def require_permission(resource, action, patient_arg="patient_id"):
     """Gate a route on one resource/action pair.
 
@@ -291,11 +313,20 @@ def require_permission(resource, action, patient_arg="patient_id"):
             try:
                 payload = decode_token(request.headers.get("Authorization"))
             except AuthError as exc:
+                _audit(action, "denied", resource=resource, detail=str(exc))
                 return jsonify({"error": str(exc)}), 401
 
             role = payload["role"]
             scope = scope_for(role, resource, action)
             if scope is None:
+                _audit(
+                    action,
+                    "denied",
+                    user_id=payload["userId"],
+                    role=role,
+                    resource=resource,
+                    detail=f"role {role} has no {action} permission",
+                )
                 return (
                     jsonify(
                         {
@@ -320,16 +351,48 @@ def require_permission(resource, action, patient_arg="patient_id"):
                 else None,
             }
 
+            target_patient = kwargs.get(patient_arg)
+
             if patient_arg in kwargs:
                 try:
                     enforce_patient_scope(kwargs[patient_arg])
                 except ForbiddenError as exc:
+                    _audit(
+                        action,
+                        "denied",
+                        user_id=user_id,
+                        role=role,
+                        resource=resource,
+                        patient_id=target_patient,
+                        detail=str(exc),
+                    )
                     return jsonify({"error": str(exc)}), 403
 
             try:
-                return view(*args, **kwargs)
+                response = view(*args, **kwargs)
             except ForbiddenError as exc:
+                _audit(
+                    action,
+                    "denied",
+                    user_id=user_id,
+                    role=role,
+                    resource=resource,
+                    patient_id=target_patient,
+                    detail=str(exc),
+                )
                 return jsonify({"error": str(exc)}), 403
+
+            _audit(
+                action,
+                "allowed",
+                user_id=user_id,
+                role=role,
+                resource=resource,
+                patient_id=target_patient
+                if target_patient is not None
+                else g.auth.get("patient_id"),
+            )
+            return response
 
         return wrapper
 
