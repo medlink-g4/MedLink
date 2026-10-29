@@ -466,34 +466,32 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('cancelAppointmentBtn').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-document.querySelectorAll('.nav-link').forEach(link => {
-    link.addEventListener('click', function (e) {
-        e.preventDefault();
-        let pageId = this.getAttribute('data-page');
-        if (!pageId) return;
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.addEventListener('click', function (e) {
+            e.preventDefault();
+            let pageId = this.getAttribute('data-page');
+            if (!pageId) return;
 
-        // Keep doctor/nurse users on their own dashboard.
-        if (
-            pageId === 'patientDashboard' &&
-            (currentRole === 'doctor' || currentRole === 'nurse')
-        ) {
-            pageId = 'providerDashboard';
-        }
-
-        showPage(pageId);
-
-        // Load permitted contacts whenever Messages is opened.
-        if (pageId === 'messages') {
-            loadContacts();
-        }
-            if (pageId === 'medicalHistory' && currentRole === 'patient') {
-                loadMedicalHistory();
+            // Keep doctor/nurse users on their own dashboard.
+            if (
+                pageId === 'patientDashboard' &&
+                (currentRole === 'doctor' || currentRole === 'nurse')
+            ) {
+                pageId = 'providerDashboard';
             }
 
             showPage(pageId);
+
+            // Load permitted contacts whenever Messages is opened.
+            if (pageId === 'messages') {
+                loadContacts();
+            }
+
+            if (pageId === 'medicalHistory' && currentRole === 'patient') {
+                loadMedicalHistory();
+            }
         });
     });
-});
 
     document.getElementById('logoutLink').addEventListener('click', function (e) {
         e.preventDefault();

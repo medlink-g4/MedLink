@@ -1,6 +1,13 @@
+import os
 import sqlite3
 
-conn = sqlite3.connect("medlink.db")
+# Everything else in the project reads MEDLINK_DB when it is set, so the
+# schema script has to honour it too. Without this it always wrote to
+# medlink.db in whatever directory you happened to run it from, which is
+# how you end up with a second empty database and a "no such table" error.
+DB_PATH = os.environ.get("MEDLINK_DB", "medlink.db")
+
+conn = sqlite3.connect(DB_PATH)
 cursor = conn.cursor()
 cursor.execute("PRAGMA foreign_keys = ON")
 
@@ -122,5 +129,6 @@ cursor.execute("""
 conn.commit()
 conn.close()
 print(
-    "medlink.db created with tables: users, patients, providers, appointments, medical_records, vitals"
+    f"{DB_PATH} created with tables: users, patients, providers, "
+    "appointments, medical_records, messages, vitals"
 )
