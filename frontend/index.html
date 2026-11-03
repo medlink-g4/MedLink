@@ -82,6 +82,11 @@
                 </div>
                 <input type="hidden" id="selectedTime">
 
+                <label for="appointmentReason">Reason (optional):</label>
+                <input type="text" id="appointmentReason" maxlength="500" placeholder="e.g. Annual checkup">
+
+                <p id="appointmentFormMsg" class="error-message" role="alert"></p>
+
                 <div class="form-buttons">
                     <button type="submit" class="btn-primary">Confirm Appointment</button>
                     <button type="button" class="btn-secondary" id="cancelAppointmentBtn">Cancel</button>

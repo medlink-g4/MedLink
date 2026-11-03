@@ -3,9 +3,11 @@ from flask_cors import CORS
 from routes.appointments import appointments_bp
 from routes.auth import auth_bp
 from routes.dr_nr_dashboard import dashboard_bp
+from routes.medical_records import medical_records_bp
 from routes.messages import messages_bp
 from routes.patients import patients_bp
-from routes.medical_records import medical_records_bp
+from routes.providers import providers_bp
+from routes.users import users_bp
 
 app = Flask(__name__)
 CORS(app)
@@ -16,6 +18,8 @@ app.register_blueprint(appointments_bp, url_prefix="/api/appointments")
 app.register_blueprint(messages_bp, url_prefix="/api/messages")
 app.register_blueprint(patients_bp, url_prefix="/api/patients")
 app.register_blueprint(medical_records_bp, url_prefix="/api/medical-records")
+app.register_blueprint(providers_bp, url_prefix="/api/providers")
+app.register_blueprint(users_bp, url_prefix="/api/users")
 
 
 @app.route("/")
