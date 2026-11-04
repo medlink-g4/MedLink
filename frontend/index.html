@@ -41,6 +41,7 @@
             <a href="#" class="nav-link" data-page="patientDashboard">Appointments</a>
             <a href="#" class="nav-link" data-page="medicalHistory">Medical History</a>
             <a href="#" class="nav-link" data-page="messages">Messages</a>
+            <a href="#" class="nav-link" data-page="reports" id="reportsNavLink">Reports</a>
             <a href="#" class="nav-link" data-page="profile">Profile</a>
             <hr>
             <a href="#" class="nav-link" id="logoutLink">Logout</a>
@@ -194,7 +195,38 @@
             </section>
         </div>
     </div>
+<!-- REPORTS PAGE -->
+<div id="reports" class="page hidden">
+    <div class="dashboard-container">
+        <h1>Reports</h1>
+        <p>View reports based on your assigned patients and activities.</p>
 
+        <section class="dashboard-section">
+            <h2>Appointment Report</h2>
+            <div id="appointmentReport" class="appointments-list">
+                <p class="no-data">Appointment report will appear here.</p>
+            </div>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>Patient Report</h2>
+            <div id="patientReport" class="appointments-list">
+                <p class="no-data">Patient report will appear here.</p>
+            </div>
+        </section>
+
+        <section class="dashboard-section">
+            <h2>Medical Records Report</h2>
+            <div id="medicalReport" class="appointments-list">
+                <p class="no-data">Medical records report will appear here.</p>
+            </div>
+        </section>
+
+        <button class="btn-secondary" id="backToDashboardBtn">
+            Back to Dashboard
+        </button>
+    </div>
+</div>
     <script src="script.js"></script>
     <script src="provider-patient.js"></script>
 </body>
