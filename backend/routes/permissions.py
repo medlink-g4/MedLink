@@ -26,8 +26,47 @@ from flask import current_app, g, jsonify, request
 
 log = logging.getLogger(__name__)
 
+# The signing key is the thing every other protection in this file depends
+# on. A role claim is trusted because the signature says it was not edited,
+# so anyone who knows the key can mint a token claiming any role for any user
+# and walk past all of it.
+#
+# This used to fall back to a fixed string whenever JWT_SECRET was unset.
+# Our repository is public, so that string was readable by anyone, and any
+# deployment that forgot the environment variable accepted tokens forged
+# with it. Raised in the Sprint 4 security review (task 4.5).
+#
+# Now an unset key is a startup failure rather than a silent downgrade.
+# MEDLINK_DEV=1 restores the old fixed string for local work and says so in
+# the log, so running the app on your own machine still takes no setup.
+DEV_JWT_SECRET = "medlink-development-secret"
+
+
+def load_jwt_secret():
+    """Resolve the signing key, or refuse to start without one."""
+    configured = os.environ.get("JWT_SECRET")
+    if configured:
+        return configured
+
+    if os.environ.get("MEDLINK_DEV") == "1":
+        log.warning(
+            "MEDLINK_DEV=1: signing tokens with the built-in development "
+            "key, which is published in this repository. Never run this "
+            "way anywhere real."
+        )
+        return DEV_JWT_SECRET
+
+    raise RuntimeError(
+        "JWT_SECRET is not set. MedLink will not start without a signing "
+        "key, because the old built-in default is published in this public "
+        "repository and anyone holding it can forge a token for any role. "
+        "Set JWT_SECRET to a long random value, or set MEDLINK_DEV=1 for "
+        "local development."
+    )
+
+
 # Mirrors task 1.3 so both halves validate the same tokens.
-JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
+JWT_SECRET = load_jwt_secret()
 JWT_ALGORITHM = "HS256"
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"

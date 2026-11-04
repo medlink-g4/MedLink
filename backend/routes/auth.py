@@ -9,7 +9,12 @@ from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
-JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
+
+# One definition of the signing key, resolved in permissions.py. This file
+# used to repeat the same fallback string, so the two halves could drift and
+# both carried the published default. See load_jwt_secret() for why an unset
+# key is now a startup failure.
+from routes.permissions import JWT_SECRET  # noqa: E402
 
 # Self-registration creates patients. Staff accounts are seeded rather than
 # signed up for, because anyone could otherwise register themselves as a
