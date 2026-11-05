@@ -25,6 +25,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "backend"))
 
+# This is a local demonstration, so it runs in development mode unless the
+# environment already names a key. Without this it would refuse to start,
+# which is correct for the application (see load_jwt_secret) and unhelpful
+# for a script whose whole job is to be runnable with no setup.
+import os  # noqa: E402
+
+os.environ.setdefault("MEDLINK_DEV", "1")
+
 # The development JWT secret is short, which PyJWT warns about on every call.
 # Keeping the demo output clean; see the README on setting JWT_SECRET.
 import warnings  # noqa: E402
