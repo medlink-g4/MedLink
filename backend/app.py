@@ -9,9 +9,9 @@ from routes.dr_nr_dashboard import dashboard_bp
 from routes.medical_records import medical_records_bp
 from routes.messages import messages_bp
 from routes.patients import patients_bp
+from routes.reports import reports_bp
 from routes.providers import providers_bp
 from routes.users import users_bp
-from routes.medical_records import medical_records_bp
 from routes.password_reset import password_reset_bp
 
 # Without this the root logger sits at WARNING and every log.info() in the
@@ -33,12 +33,13 @@ app.register_blueprint(password_reset_bp, url_prefix="/api/auth")
 app.register_blueprint(audit_bp, url_prefix="/api/audit")
 app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")
 app.register_blueprint(appointments_bp, url_prefix="/api/appointments")
-app.register_blueprint(messages_bp, url_prefix="/api/messages")
 app.register_blueprint(patients_bp, url_prefix="/api/patients")
 app.register_blueprint(medical_records_bp, url_prefix="/api/medical-records")
 app.register_blueprint(providers_bp, url_prefix="/api/providers")
 app.register_blueprint(users_bp, url_prefix="/api/users")
 
+app.register_blueprint(messages_bp, url_prefix="/api/messages")
+app.register_blueprint(reports_bp, url_prefix="/api/reports")
 
 @app.route("/")
 def home():

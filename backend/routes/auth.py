@@ -61,6 +61,21 @@ def db_path():
     return Path(configured or os.environ.get("MEDLINK_DB") or DEFAULT_DB_PATH)
 
 
+def db_path():
+    """Resolve the database file the same way permissions.py does.
+
+    Previously this was pinned to the repository root, so pointing the app at
+    another database (a test fixture, or a copy in another directory) was
+    silently ignored and every query hit the wrong file.
+    """
+    configured = None
+    try:
+        configured = current_app.config.get("MEDLINK_DB")
+    except RuntimeError:  # outside an application context
+        pass
+    return Path(configured or os.environ.get("MEDLINK_DB") or DEFAULT_DB_PATH)
+
+
 def get_db():
     conn = sqlite3.connect(db_path())
     conn.row_factory = sqlite3.Row

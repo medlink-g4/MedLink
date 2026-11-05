@@ -57,6 +57,12 @@ async function handleLogin(event) {
         // Successful login
         authToken = data.token;
         currentRole = data.role;
+        const reportsLink = document.getElementById('reportsNavLink');
+
+if (reportsLink) {
+    reportsLink.style.display =
+        currentRole === 'patient' ? 'none' : '';
+}
         currentUser = { id: data.userId, role: data.role, name: emailInput };
         sessionStorage.setItem('authToken', authToken);
         sessionStorage.setItem('currentRole', currentRole);
@@ -432,6 +438,74 @@ async function loadProviderDashboard() {
     }
 }
 
+// ===== REPORTS LOGIC (Sprint 4 - Task 4.3) =====
+async function loadReports() {
+    const appointmentReport = document.getElementById('appointmentReport');
+    const patientReport = document.getElementById('patientReport');
+    const medicalReport = document.getElementById('medicalReport');
+
+    appointmentReport.replaceChildren();
+    patientReport.replaceChildren();
+    medicalReport.replaceChildren();
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/reports/`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            renderEmpty(appointmentReport, data.error || 'Could not load reports.');
+            return;
+        }
+
+        // Appointment Report
+        if (!data.appointments.length) {
+            renderEmpty(appointmentReport, 'No appointment data available.');
+        } else {
+            data.appointments.forEach(appt => {
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+                card.textContent =
+                    `${appt.patient_name} | ${appt.appointment_time} | ${appt.status}`;
+                appointmentReport.appendChild(card);
+            });
+        }
+
+        // Patient Report
+        if (!data.patients.length) {
+            renderEmpty(patientReport, 'No assigned patients found.');
+        } else {
+            data.patients.forEach(patient => {
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+                card.textContent =
+                    `${patient.name} | ${patient.email} | ${patient.phone || 'N/A'}`;
+                patientReport.appendChild(card);
+            });
+        }
+
+        // Medical Records Report
+        if (!data.medical_records.length) {
+            renderEmpty(medicalReport, 'No medical records available.');
+        } else {
+            data.medical_records.forEach(record => {
+                const card = document.createElement('div');
+                card.className = 'appointment-card';
+                card.textContent =
+                    `${record.patient_name} | Diagnosis: ${record.diagnosis || 'N/A'} | Prescription: ${record.prescription || 'N/A'} | Date: ${record.record_date}`;
+                medicalReport.appendChild(card);
+            });
+        }
+
+    } catch (error) {
+        renderEmpty(appointmentReport, 'Could not connect to the server.');
+    }
+}
+
 function renderEmpty(container, message) {
     if (!message) return;
     const emptyMessage = document.createElement('p');
@@ -625,32 +699,49 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('cancelAppointmentBtn').addEventListener('click', function () {
         showPage('patientDashboard');
     });
-    document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', function (e) {
-            e.preventDefault();
-            let pageId = this.getAttribute('data-page');
-            if (!pageId) return;
+document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function (e) {
+        e.preventDefault();
+        let pageId = this.getAttribute('data-page');
+        if (!pageId) return;
 
-            // Keep doctor/nurse users on their own dashboard.
-            if (
-                pageId === 'patientDashboard' &&
-                (currentRole === 'doctor' || currentRole === 'nurse')
-            ) {
-                pageId = 'providerDashboard';
+        // Keep doctor/nurse users on their own dashboard.
+        if (
+            pageId === 'patientDashboard' &&
+            (currentRole === 'doctor' || currentRole === 'nurse')
+        ) {
+            pageId = 'providerDashboard';
+        }
+
+        // Reports are only available to doctors and nurses.
+        if (pageId === 'reports') {
+            if (currentRole === 'doctor' || currentRole === 'nurse') {
+                loadReports();
+            } else {
+                showPage('patientDashboard');
+                return;
             }
+        }
 
-            showPage(pageId);
+        showPage(pageId);
 
-            // Load permitted contacts whenever Messages is opened.
-            if (pageId === 'messages') {
-                loadContacts();
-            }
+        // Load permitted contacts whenever Messages is opened.
+        if (pageId === 'messages') {
+            loadContacts();
+        }
 
-            if (pageId === 'medicalHistory' && currentRole === 'patient') {
-                loadMedicalHistory();
-            }
-        });
+        if (pageId === 'medicalHistory' && currentRole === 'patient') {
+            loadMedicalHistory();
+        }
     });
+});
+    });
+});
+document.getElementById('backToDashboardBtn').addEventListener('click', function () {
+    showPage('providerDashboard');
+});
+
+
 
 
     document.getElementById('logoutLink').addEventListener('click', function (e) {
