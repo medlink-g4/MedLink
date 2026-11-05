@@ -43,6 +43,7 @@
             <a href="#" class="nav-link" data-page="messages">Messages</a>
             <a href="#" class="nav-link" data-page="reports" id="reportsNavLink">Reports</a>
             <a href="#" class="nav-link" data-page="profile">Profile</a>
+            <a href="#" class="nav-link" data-page="appointmentManager">Manage Appointments</a>
             <hr>
             <a href="#" class="nav-link" id="logoutLink">Logout</a>
         </nav>
@@ -82,6 +83,11 @@
                 </div>
                 <input type="hidden" id="selectedTime">
 
+                <label for="appointmentReason">Reason (optional):</label>
+                <input type="text" id="appointmentReason" maxlength="500" placeholder="e.g. Annual checkup">
+
+                <p id="appointmentFormMsg" class="error-message" role="alert"></p>
+
                 <div class="form-buttons">
                     <button type="submit" class="btn-primary">Confirm Appointment</button>
                     <button type="button" class="btn-secondary" id="cancelAppointmentBtn">Cancel</button>
@@ -89,6 +95,17 @@
             </form>
         </div>
     </div>
+       <div id="appointmentManager" class="page hidden">
+       <div class="dashboard-container">
+           <h1>Manage Appointments</h1>
+           <p id="amMsg" class="pd-message" role="status"></p>
+           <div id="amBody"></div>
+           <button class="btn-secondary" id="amBackBtn">Back</button>
+       </div>
+   </div>
+
+
+
 
     <!-- MEDICAL HISTORY PAGE -->
     <div id="medicalHistory" class="page hidden">
@@ -229,5 +246,7 @@
 </div>
     <script src="script.js"></script>
     <script src="provider-patient.js"></script>
+    <script src="profile.js"></script>
+    <script src="appointments.js"></script>
 </body>
 </html>

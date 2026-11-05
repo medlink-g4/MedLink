@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -8,7 +9,12 @@ from flask import Blueprint, current_app, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
-JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
+
+# One definition of the signing key, resolved in permissions.py. This file
+# used to repeat the same fallback string, so the two halves could drift and
+# both carried the published default. See load_jwt_secret() for why an unset
+# key is now a startup failure.
+from routes.permissions import JWT_SECRET  # noqa: E402
 
 # Self-registration creates patients. Staff accounts are seeded rather than
 # signed up for, because anyone could otherwise register themselves as a
@@ -19,6 +25,40 @@ SELF_SERVICE_ROLES = ["patient"]
 STAFF_ROLES = ["doctor", "nurse"]
 
 auth_bp = Blueprint("auth", __name__)
+
+# Task 4.5 action names, repeated here so this module needs no import at load
+# time. Authentication has to keep working even if auditing does not.
+LOGIN_SUCCEEDED = "login_succeeded"
+LOGIN_FAILED = "login_failed"
+ALLOWED = "allowed"
+DENIED = "denied"
+
+
+def audit(action, outcome, **fields):
+    """Record an authentication event. Never fails the request."""
+    try:
+        from routes.audit import record
+
+        record(action, outcome, **fields)
+    except Exception:  # noqa: BLE001 - auditing must never block a login
+        logging.getLogger(__name__).exception(
+            "Could not write audit entry for %s", action
+        )
+
+
+def db_path():
+    """Resolve the database file the same way permissions.py does.
+
+    Previously this was pinned to the repository root, so pointing the app at
+    another database (a test fixture, or a copy in another directory) was
+    silently ignored and every query hit the wrong file.
+    """
+    configured = None
+    try:
+        configured = current_app.config.get("MEDLINK_DB")
+    except RuntimeError:  # outside an application context
+        pass
+    return Path(configured or os.environ.get("MEDLINK_DB") or DEFAULT_DB_PATH)
 
 
 def db_path():
@@ -157,9 +197,20 @@ def login():
     conn.close()
 
     if user is None:
+        # Task 4.5. Deliberately records no user_id: there is no account to
+        # attribute this to, and writing the submitted address into the audit
+        # log would put unregistered people's emails in it.
+        audit(LOGIN_FAILED, DENIED, detail="no account for the submitted address")
         return jsonify({"error": "Invalid email or password"}), 401
 
     if not check_password_hash(user["password_hash"], password):
+        audit(
+            LOGIN_FAILED,
+            DENIED,
+            user_id=user["id"],
+            role=user["role"],
+            detail="password did not match",
+        )
         return jsonify({"error": "Invalid email or password"}), 401
 
     payload = {
@@ -169,6 +220,8 @@ def login():
     }
 
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+    audit(LOGIN_SUCCEEDED, ALLOWED, user_id=user["id"], role=user["role"])
 
     return jsonify(
         {

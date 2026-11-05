@@ -3,20 +3,6 @@ const API_BASE_URL = 'http://localhost:5000';
 window.addEventListener('beforeunload', () => {
     console.log('DEBUG: MedLink page is reloading or closing.');
 });
-// ===== MOCK DATA (still used by the PATIENT dashboard only -- untouched) =====
-const mockDoctors = [
-    { id: 1, name: 'Dr. Sarah Johnson', specialty: 'Cardiology' },
-    { id: 2, name: 'Dr. Mike Chen', specialty: 'Neurology' },
-    { id: 3, name: 'Dr. Emily Brown', specialty: 'Pediatrics' }
-];
-
-const mockTimeSlots = ['9:00 AM', '10:00 AM', '11:00 AM', '2:00 PM', '3:00 PM', '4:00 PM'];
-
-let mockAppointments = [
-    { id: 1, patientId: 1, doctorId: 1, doctorName: 'Dr. Sarah Johnson', date: '2026-09-10', time: '10:00 AM', status: 'scheduled' },
-    { id: 2, patientId: 1, doctorId: 2, doctorName: 'Dr. Mike Chen', date: '2026-09-15', time: '2:00 PM', status: 'scheduled' }
-];
-
 // ===== CURRENT USER STATE =====
 let currentUser = null;   // { id, name, role } for display purposes
 let currentRole = null;
@@ -37,6 +23,11 @@ function showPage(pageId) {
         sidebar.classList.remove('hidden');
     } else {
         sidebar.classList.add('hidden');
+    }
+
+    // Always show a patient's current appointments, whichever button led here.
+    if (pageId === 'patientDashboard' && currentRole === 'patient') {
+        loadPatientDashboard();
     }
 }
 
@@ -78,7 +69,6 @@ if (reportsLink) {
         sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
 
         if (data.role === 'patient') {
-            loadPatientDashboard();
             showPage('patientDashboard');
         } else if (data.role === 'doctor' || data.role === 'nurse') {
             await loadProviderDashboard();
@@ -101,8 +91,64 @@ function handleLogout() {
     showPage('loginPage');
 }
 
-// ===== PATIENT DASHBOARD LOGIC (unchanged -- still mock data) =====
-function loadPatientDashboard() {
+// ===== PATIENT DASHBOARD + BOOKING LOGIC -- REAL BACKEND =====
+// Appointments come from /api/appointments, doctors from /api/providers and
+// free times from /api/appointments/availability. The server decides what this
+// patient may see and enforces every booking rule; this code only displays.
+
+// Small fetch helper for the calls below. Never throws on a bad status: the
+// caller looks at .ok and .status.
+async function bookingApi(path, method, body) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: method || 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+        },
+        body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    let data = null;
+    try {
+        data = await response.json();
+    } catch (err) {
+        // body was not JSON; leave data null
+    }
+    return { ok: response.ok, status: response.status, data: data };
+}
+
+function bookingErrorText(result, fallback) {
+    if (result.status === 401) {
+        return 'Your session has expired. Please log out and log in again.';
+    }
+    return (result.data && result.data.error) || fallback;
+}
+
+// "2026-10-15T09:30" -> local Date (no timezone shifting), or null.
+function bookingParseTime(text) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(text || '');
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+}
+
+function bookingDateLabel(date) {
+    return date.toLocaleDateString(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    });
+}
+
+function bookingTimeLabel(date) {
+    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function bookingDayString(date) {
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${date.getFullYear()}-${mm}-${dd}`;
+}
+
+let patientDashboardRequest = 0;
+
+async function loadPatientDashboard() {
     const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
 
@@ -111,136 +157,249 @@ function loadPatientDashboard() {
 
     // Clear cards from the previous display.
     appointmentsList.replaceChildren();
+    renderEmpty(appointmentsList, 'Loading appointments...');
 
-    // Set today's date to midnight, so an appointment today counts as upcoming.
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // If this runs twice in a row, only the newest answer is drawn.
+    const ticket = ++patientDashboardRequest;
 
-    // Keep this patient's scheduled appointments that are today or later.
-    const upcomingAppointments = mockAppointments
+    let result;
+    try {
+        result = await bookingApi('/api/appointments');
+    } catch (err) {
+        if (ticket !== patientDashboardRequest) return;
+        appointmentsList.replaceChildren();
+        renderEmpty(appointmentsList, 'Could not reach the server.');
+        return;
+    }
+    if (ticket !== patientDashboardRequest) return;
+    appointmentsList.replaceChildren();
+
+    if (!result.ok) {
+        renderEmpty(appointmentsList, bookingErrorText(result, 'Could not load appointments.'));
+        return;
+    }
+
+    // Keep scheduled appointments that have not started yet, soonest first.
+    const now = new Date();
+    const upcomingAppointments = result.data
         .filter(appointment => {
-            if (
-                appointment.patientId !== currentUser.id ||
-                appointment.status !== 'scheduled'
-            ) {
-                return false;
-            }
-
-            const appointmentDate =
-                new Date(`${appointment.date}T00:00:00`);
-
-            return !Number.isNaN(appointmentDate.getTime()) &&
-                appointmentDate >= today;
+            const start = bookingParseTime(appointment.appointment_time);
+            return appointment.status === 'scheduled' && start !== null && start >= now;
         })
-        // Put the soonest appointment first.
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
 
     // Show a helpful message if there are no upcoming appointments.
     if (upcomingAppointments.length === 0) {
-        const emptyMessage = document.createElement('p');
-        emptyMessage.className = 'no-data';
-        emptyMessage.textContent = 'No upcoming appointments';
-        appointmentsList.appendChild(emptyMessage);
+        renderEmpty(appointmentsList, 'No upcoming appointments');
         return;
     }
 
     // Make one card for every upcoming appointment.
     upcomingAppointments.forEach(appointment => {
+        const start = bookingParseTime(appointment.appointment_time);
+
         const card = document.createElement('div');
         card.className = 'appointment-card';
 
         const doctorName = document.createElement('h3');
-        doctorName.textContent = appointment.doctorName;
+        doctorName.textContent = appointment.provider_name || `Provider #${appointment.provider_id}`;
 
         const date = document.createElement('p');
-        date.textContent = `Date: ${appointment.date}`;
+        date.textContent = `Date: ${bookingDateLabel(start)}`;
 
         const time = document.createElement('p');
-        time.textContent = `Time: ${appointment.time}`;
+        time.textContent = `Time: ${bookingTimeLabel(start)}`;
+
+        const reason = document.createElement('p');
+        reason.textContent = `Reason: ${appointment.reason || 'Not given'}`;
 
         const status = document.createElement('p');
         status.textContent = `Status: ${appointment.status}`;
 
-        card.append(doctorName, date, time, status);
+        card.append(doctorName, date, time, reason, status);
 
-        
-        // the separate appointment cancellation task.
-        const cancelButton = document.createElement('button');
-        cancelButton.type = 'button';
-        cancelButton.className = 'btn-secondary';
-        cancelButton.textContent = 'Cancel';
-        cancelButton.addEventListener('click', () => {
-            cancelAppointment(appointment.id);
+        // Rescheduling and cancelling live on the Manage Appointments page.
+        const manageButton = document.createElement('button');
+        manageButton.type = 'button';
+        manageButton.className = 'btn-secondary';
+        manageButton.textContent = 'Reschedule / Cancel';
+        manageButton.addEventListener('click', () => {
+            const link = document.querySelector('.nav-link[data-page="appointmentManager"]');
+            if (link) link.click();
         });
 
-        card.appendChild(cancelButton);
+        card.appendChild(manageButton);
         appointmentsList.appendChild(card);
     });
 }
 
-
-function cancelAppointment(appointmentId) {
-    mockAppointments = mockAppointments.filter(apt => apt.id !== appointmentId);
-    loadPatientDashboard();
-    alert('Appointment cancelled');
+function setBookingMessage(text) {
+    document.getElementById('appointmentFormMsg').textContent = text;
 }
 
-// ===== APPOINTMENT SCHEDULING LOGIC (unchanged -- still mock data) =====
-function loadAppointmentForm() {
+function bookingHint(container, text) {
+    container.replaceChildren();
+    const hint = document.createElement('p');
+    hint.className = 'no-data';
+    hint.textContent = text;
+    container.appendChild(hint);
+}
+
+async function loadAppointmentForm() {
+    document.getElementById('appointmentForm').reset();
+    document.getElementById('selectedTime').value = '';
+    setBookingMessage('');
+
     const doctorSelect = document.getElementById('doctorSelect');
-    doctorSelect.innerHTML = '<option value="">-- Choose a Doctor --</option>';
-    mockDoctors.forEach(doctor => {
-        const option = document.createElement('option');
-        option.value = doctor.id;
-        option.textContent = `${doctor.name} (${doctor.specialty})`;
-        doctorSelect.appendChild(option);
-    });
-
+    const dateInput = document.getElementById('appointmentDate');
     const timeSlots = document.getElementById('timeSlots');
-    timeSlots.innerHTML = mockTimeSlots.map(time => `
-        <button type="button" class="time-slot-btn" data-time="${time}">${time}</button>
-    `).join('');
 
-    document.querySelectorAll('.time-slot-btn').forEach(btn => {
-        btn.addEventListener('click', function (e) {
+    // Today is the earliest date offered. The server still rejects past times.
+    dateInput.min = bookingDayString(new Date());
+    bookingHint(timeSlots, 'Choose a doctor and a date to see free times.');
+
+    // Assigning onchange (not addEventListener) keeps this safe to run every
+    // time the page opens.
+    doctorSelect.onchange = refreshBookingSlots;
+    dateInput.onchange = refreshBookingSlots;
+
+    doctorSelect.replaceChildren(new Option('-- Choose a Doctor --', ''));
+    try {
+        const result = await bookingApi('/api/providers');
+        if (!result.ok) {
+            setBookingMessage(bookingErrorText(result, 'Could not load the list of doctors.'));
+            return;
+        }
+        if (result.data.length === 0) {
+            setBookingMessage('No doctors are available to book yet.');
+            return;
+        }
+        result.data.forEach(doctor => {
+            const label = doctor.specialty ? `${doctor.name} (${doctor.specialty})` : doctor.name;
+            doctorSelect.appendChild(new Option(label, doctor.id));
+        });
+    } catch (err) {
+        setBookingMessage('Could not reach the server.');
+    }
+}
+
+let bookingSlotRequest = 0;
+
+async function refreshBookingSlots() {
+    const doctorId = document.getElementById('doctorSelect').value;
+    const day = document.getElementById('appointmentDate').value;
+    const timeSlots = document.getElementById('timeSlots');
+
+    document.getElementById('selectedTime').value = '';
+
+    if (!doctorId || !day) {
+        bookingHint(timeSlots, 'Choose a doctor and a date to see free times.');
+        return;
+    }
+
+    // If the doctor or date changes mid-request, drop the stale answer.
+    const ticket = ++bookingSlotRequest;
+    bookingHint(timeSlots, 'Loading times...');
+
+    let result;
+    try {
+        result = await bookingApi(
+            `/api/appointments/availability?provider_id=${encodeURIComponent(doctorId)}&date=${encodeURIComponent(day)}`
+        );
+    } catch (err) {
+        if (ticket !== bookingSlotRequest) return;
+        bookingHint(timeSlots, 'Could not reach the server.');
+        return;
+    }
+    if (ticket !== bookingSlotRequest) return;
+
+    if (!result.ok) {
+        bookingHint(timeSlots, bookingErrorText(result, 'Could not load free times.'));
+        return;
+    }
+    if (result.data.available.length === 0) {
+        bookingHint(timeSlots, 'No free times on this date. Try another day.');
+        return;
+    }
+
+    timeSlots.replaceChildren();
+    result.data.available.forEach(value => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'time-slot-btn';
+        button.textContent = bookingTimeLabel(bookingParseTime(value));
+        button.dataset.time = value;
+        button.setAttribute('aria-pressed', 'false');
+        button.addEventListener('click', function (e) {
             e.preventDefault();
-            document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('active'));
+            timeSlots.querySelectorAll('.time-slot-btn').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
             this.classList.add('active');
+            this.setAttribute('aria-pressed', 'true');
             document.getElementById('selectedTime').value = this.dataset.time;
         });
+        timeSlots.appendChild(button);
     });
 }
 
-function handleScheduleAppointment(event) {
+async function handleScheduleAppointment(event) {
     event.preventDefault();
 
     const doctorId = document.getElementById('doctorSelect').value;
     const date = document.getElementById('appointmentDate').value;
     const time = document.getElementById('selectedTime').value;
+    const reason = document.getElementById('appointmentReason').value.trim();
 
     if (!doctorId || !date || !time) {
-        alert('Please select doctor, date, and time');
+        setBookingMessage('Please select a doctor, a date, and a time.');
         return;
     }
 
-    const doctor = mockDoctors.find(d => d.id == doctorId);
+    const submitButton = document.querySelector('#appointmentForm button[type="submit"]');
+    submitButton.disabled = true;      // no double bookings from a double click
+    setBookingMessage('Booking...');
 
-    const newAppointment = {
-        id: mockAppointments.length + 1,
-        patientId: currentUser.id,
-        doctorId: parseInt(doctorId),
-        doctorName: doctor.name,
-        date: date,
-        time: time,
-        status: 'scheduled'
-    };
+    try {
+        // The booking route wants the patient's id in the patients table,
+        // which is not the same number as the user id kept at login.
+        const me = await bookingApi('/api/users/me');
+        if (!me.ok || !me.data.patient) {
+            setBookingMessage(bookingErrorText(me, 'Could not look up your patient record.'));
+            return;
+        }
 
-    mockAppointments.push(newAppointment);
+        const result = await bookingApi('/api/appointments', 'POST', {
+            patient_id: me.data.patient.id,
+            provider_id: Number(doctorId),
+            appointment_time: time,
+            reason: reason || null
+        });
 
-    alert('Appointment scheduled successfully!');
-    document.getElementById('appointmentForm').reset();
-    loadPatientDashboard();
-    showPage('patientDashboard');
+        if (!result.ok) {
+            if (result.status === 409) {
+                // Someone else got there first: refresh the times so the
+                // taken one disappears, then explain.
+                await refreshBookingSlots();
+                const clash = result.data && /^Patient/.test(result.data.error || '');
+                setBookingMessage(clash
+                    ? 'You already have an appointment at that time. Please pick another time.'
+                    : 'That time was just taken. Please pick another.');
+                return;
+            }
+            setBookingMessage(bookingErrorText(result, 'Could not book the appointment.'));
+            return;
+        }
+
+        document.getElementById('appointmentForm').reset();
+        setBookingMessage('');
+        showPage('patientDashboard');   // reloads the list, so the new one shows
+    } catch (err) {
+        setBookingMessage('Could not reach the server.');
+    } finally {
+        submitButton.disabled = false;
+    }
 }
 
 // ===== PROVIDER (DOCTOR/NURSE) DASHBOARD LOGIC -- REAL BACKEND =====
@@ -357,7 +516,6 @@ function renderEmpty(container, message) {
 /* This function loads and displays the patient's records
    and medications from Alex's API. */
 async function loadMedicalHistory() {
-    console.log("loadMedicalHistory() called");
     const recordsList = document.getElementById('medicalRecordsList');
     const medicationsList = document.getElementById('medicationsList');
 
@@ -555,27 +713,34 @@ document.querySelectorAll('.nav-link').forEach(link => {
             pageId = 'providerDashboard';
         }
 
-        if (pageId === 'medicalHistory' && currentRole === 'patient') {
-            loadMedicalHistory();
+        // Reports are only available to doctors and nurses.
+        if (pageId === 'reports') {
+            if (currentRole === 'doctor' || currentRole === 'nurse') {
+                loadReports();
+            } else {
+                showPage('patientDashboard');
+                return;
+            }
         }
 
+        showPage(pageId);
+
+        // Load permitted contacts whenever Messages is opened.
         if (pageId === 'messages') {
             loadContacts();
         }
-        if (pageId === 'reports') {
-    if (currentRole === 'doctor' || currentRole === 'nurse') {
-        loadReports();
-    } else {
-        showPage('patientDashboard');
-        return;
-    }
-}
-        showPage(pageId);
+
+        if (pageId === 'medicalHistory' && currentRole === 'patient') {
+            loadMedicalHistory();
+        }
+    });
+});
     });
 });
 document.getElementById('backToDashboardBtn').addEventListener('click', function () {
     showPage('providerDashboard');
 });
+
 
 
 
@@ -613,7 +778,6 @@ if (savedToken && savedRole && savedUser) {
         currentUser = JSON.parse(savedUser);
 
         if (currentRole === 'patient') {
-            loadPatientDashboard();
             showPage('patientDashboard');
         } else if (currentRole === 'doctor' || currentRole === 'nurse') {
             loadProviderDashboard().then(() => showPage('providerDashboard'));
@@ -625,7 +789,6 @@ if (savedToken && savedRole && savedUser) {
     }
 } else {
     showPage('loginPage');
-
 }
 });
 // ===== MESSAGING LOGIC =====

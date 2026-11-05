@@ -26,8 +26,47 @@ from flask import current_app, g, jsonify, request
 
 log = logging.getLogger(__name__)
 
+# The signing key is the thing every other protection in this file depends
+# on. A role claim is trusted because the signature says it was not edited,
+# so anyone who knows the key can mint a token claiming any role for any user
+# and walk past all of it.
+#
+# This used to fall back to a fixed string whenever JWT_SECRET was unset.
+# Our repository is public, so that string was readable by anyone, and any
+# deployment that forgot the environment variable accepted tokens forged
+# with it. Raised in the Sprint 4 security review (task 4.5).
+#
+# Now an unset key is a startup failure rather than a silent downgrade.
+# MEDLINK_DEV=1 restores the old fixed string for local work and says so in
+# the log, so running the app on your own machine still takes no setup.
+DEV_JWT_SECRET = "medlink-development-secret"
+
+
+def load_jwt_secret():
+    """Resolve the signing key, or refuse to start without one."""
+    configured = os.environ.get("JWT_SECRET")
+    if configured:
+        return configured
+
+    if os.environ.get("MEDLINK_DEV") == "1":
+        log.warning(
+            "MEDLINK_DEV=1: signing tokens with the built-in development "
+            "key, which is published in this repository. Never run this "
+            "way anywhere real."
+        )
+        return DEV_JWT_SECRET
+
+    raise RuntimeError(
+        "JWT_SECRET is not set. MedLink will not start without a signing "
+        "key, because the old built-in default is published in this public "
+        "repository and anyone holding it can forge a token for any role. "
+        "Set JWT_SECRET to a long random value, or set MEDLINK_DEV=1 for "
+        "local development."
+    )
+
+
 # Mirrors task 1.3 so both halves validate the same tokens.
-JWT_SECRET = os.environ.get("JWT_SECRET", "medlink-development-secret")
+JWT_SECRET = load_jwt_secret()
 JWT_ALGORITHM = "HS256"
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[2] / "medlink.db"
@@ -47,9 +86,11 @@ PERMISSIONS = {
         "users": {"view": OWN, "edit": OWN},
         "patients": {"view": OWN, "edit": OWN},
         "medical_records": {"view": OWN},
-        "appointments": {"view": OWN, "create": OWN, "cancel": OWN},
+        "appointments": {"view": OWN, "create": OWN, "update": OWN, "cancel": OWN},
         "providers": {"view": ALL},
         "messages": {"view": OWN, "create": OWN},
+        # Task 4.5. A patient may read who has reached their own record.
+        "audit": {"view": OWN},
     },
     DOCTOR: {
         "users": {"view": OWN, "edit": OWN},
@@ -69,6 +110,9 @@ PERMISSIONS = {
         },
         "providers": {"view": ALL, "edit": OWN},
         "messages": {"view": ASSIGNED, "create": ASSIGNED},
+        # Task 4.5. Staff read their own activity, and the access history of
+        # patients they are assigned to. Nobody reads the whole log.
+        "audit": {"view": ASSIGNED},
     },
     NURSE: {
         "users": {"view": OWN, "edit": OWN},
@@ -77,11 +121,13 @@ PERMISSIONS = {
         "appointments": {
             "view": ASSIGNED,
             "create": ASSIGNED,
+            "update": ASSIGNED,
             "cancel": ASSIGNED,
             "note": ASSIGNED,
         },
         "providers": {"view": ALL, "edit": OWN},
         "messages": {"view": ASSIGNED, "create": ASSIGNED},
+        "audit": {"view": ASSIGNED},
     },
 }
 
@@ -129,7 +175,7 @@ def decode_token(auth_header):
     if not auth_header or not auth_header.startswith("Bearer "):
         raise AuthError("Missing or malformed Authorization header")
 
-    token = auth_header[len("Bearer "):].strip()
+    token = auth_header[len("Bearer ") :].strip()
     if not token:
         raise AuthError("Empty bearer token")
 
@@ -257,9 +303,7 @@ def _scope_allows_patient(scope, target_patient_id):
         return own is not None and int(own) == int(target_patient_id)
 
     if scope == ASSIGNED:
-        return is_assigned(
-            g.auth.get("provider_id"), target_patient_id, g.auth["role"]
-        )
+        return is_assigned(g.auth.get("provider_id"), target_patient_id, g.auth["role"])
 
     return False
 
@@ -277,6 +321,22 @@ def enforce_patient_scope(target_patient_id):
         )
 
 
+def _audit(action, outcome, **fields):
+    """Write an audit row for task 4.5, without ever failing the request.
+
+    Imported here rather than at module level because routes/audit.py imports
+    this module; doing it at the top would be a circular import. Audit logging
+    is also deliberately optional: if the module or the table is missing, the
+    permission layer still works exactly as before.
+    """
+    try:
+        from routes.audit import record
+
+        record(action, outcome, **fields)
+    except Exception:  # noqa: BLE001 - auditing must never break a request
+        log.exception("Could not write audit entry for %s/%s", action, outcome)
+
+
 def require_permission(resource, action, patient_arg="patient_id"):
     """Gate a route on one resource/action pair.
 
@@ -291,17 +351,22 @@ def require_permission(resource, action, patient_arg="patient_id"):
             try:
                 payload = decode_token(request.headers.get("Authorization"))
             except AuthError as exc:
+                _audit(action, "denied", resource=resource, detail=str(exc))
                 return jsonify({"error": str(exc)}), 401
 
             role = payload["role"]
             scope = scope_for(role, resource, action)
             if scope is None:
+                _audit(
+                    action,
+                    "denied",
+                    user_id=payload["userId"],
+                    role=role,
+                    resource=resource,
+                    detail=f"role {role} has no {action} permission",
+                )
                 return (
-                    jsonify(
-                        {
-                            "error": f"Role {role} may not {action} {resource}"
-                        }
-                    ),
+                    jsonify({"error": f"Role {role} may not {action} {resource}"}),
                     403,
                 )
 
@@ -312,24 +377,54 @@ def require_permission(resource, action, patient_arg="patient_id"):
                 "scope": scope,
                 "resource": resource,
                 "action": action,
-                "patient_id": resolve_patient_id(user_id)
-                if role == PATIENT
-                else None,
+                "patient_id": resolve_patient_id(user_id) if role == PATIENT else None,
                 "provider_id": resolve_provider_id(user_id)
                 if role in (DOCTOR, NURSE)
                 else None,
             }
 
+            target_patient = kwargs.get(patient_arg)
+
             if patient_arg in kwargs:
                 try:
                     enforce_patient_scope(kwargs[patient_arg])
                 except ForbiddenError as exc:
+                    _audit(
+                        action,
+                        "denied",
+                        user_id=user_id,
+                        role=role,
+                        resource=resource,
+                        patient_id=target_patient,
+                        detail=str(exc),
+                    )
                     return jsonify({"error": str(exc)}), 403
 
             try:
-                return view(*args, **kwargs)
+                response = view(*args, **kwargs)
             except ForbiddenError as exc:
+                _audit(
+                    action,
+                    "denied",
+                    user_id=user_id,
+                    role=role,
+                    resource=resource,
+                    patient_id=target_patient,
+                    detail=str(exc),
+                )
                 return jsonify({"error": str(exc)}), 403
+
+            _audit(
+                action,
+                "allowed",
+                user_id=user_id,
+                role=role,
+                resource=resource,
+                patient_id=target_patient
+                if target_patient is not None
+                else g.auth.get("patient_id"),
+            )
+            return response
 
         return wrapper
 
