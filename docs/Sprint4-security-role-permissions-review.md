@@ -74,13 +74,13 @@ The review also checked the database schema to understand how user IDs, patient 
 
 ## 6. Assignment behavior and configuration notes
 
-Provider assignment is currently determined from appointment data. Doctors are matched through an appointment’s `provider_id`, and nurses through `assisting_nurse_id`.
+Provider assignment is currently derived from appointment data. Doctors are matched through an appointment’s `provider_id`, and nurses through `assisting_nurse_id`.
 
-This means a provider’s access depends on having an appointment relationship with the patient. Under the current logic, a past appointment that is not cancelled can continue to count as an assignment. These behaviors may be intentional; the team can confirm that they match the project’s access policy.
+The follow-up discussion clarified that this approach has limitations: providers may retain access through a past appointment, while a provider may not be considered assigned before an appointment exists. A separate assignment table is suggested by the team membres and will be considered for the Sprint 5 backlog.
 
-The permission matrix allows nurses to edit assigned patient profiles. The patient update route accepts fields such as date of birth, phone, and insurance information. This may be intentional for the project; it is broader than updating vitals alone.
+The permission matrix allows nurses to edit assigned patient profiles, including date of birth, phone, and insurance information. The discussion clarified that this followed the earlier “update patient information” task while noting that insurance updates may not be appropriate for nurses. The team can decide whether to narrow this permission.
 
-The authentication and permission files have a development fallback for `JWT_SECRET`. For a deployed environment, the secret should be set through environment configuration rather than relying on that fallback.
+During the review, a development fallback for `JWT_SECRET` was indetified as a security risk. Because the repository is public, the fallback value could be used to forge JWTs and impersonate user roles, potentially exposing patient records. Deployed environments should use a securely configured secret. In a follow-up discussion, Alex explained that `MEDLINK_DEV=1` is intended for local development.
 
 ## 7. Testing performed
 
