@@ -86,7 +86,7 @@ PERMISSIONS = {
         "users": {"view": OWN, "edit": OWN},
         "patients": {"view": OWN, "edit": OWN},
         "medical_records": {"view": OWN},
-        "appointments": {"view": OWN, "create": OWN, "cancel": OWN},
+        "appointments": {"view": OWN, "create": OWN, "update": OWN, "cancel": OWN},
         "providers": {"view": ALL},
         "messages": {"view": OWN, "create": OWN},
         # Task 4.5. A patient may read who has reached their own record.
@@ -121,6 +121,7 @@ PERMISSIONS = {
         "appointments": {
             "view": ASSIGNED,
             "create": ASSIGNED,
+            "update": ASSIGNED,
             "cancel": ASSIGNED,
             "note": ASSIGNED,
         },
@@ -174,7 +175,7 @@ def decode_token(auth_header):
     if not auth_header or not auth_header.startswith("Bearer "):
         raise AuthError("Missing or malformed Authorization header")
 
-    token = auth_header[len("Bearer "):].strip()
+    token = auth_header[len("Bearer ") :].strip()
     if not token:
         raise AuthError("Empty bearer token")
 
@@ -302,9 +303,7 @@ def _scope_allows_patient(scope, target_patient_id):
         return own is not None and int(own) == int(target_patient_id)
 
     if scope == ASSIGNED:
-        return is_assigned(
-            g.auth.get("provider_id"), target_patient_id, g.auth["role"]
-        )
+        return is_assigned(g.auth.get("provider_id"), target_patient_id, g.auth["role"])
 
     return False
 
@@ -367,11 +366,7 @@ def require_permission(resource, action, patient_arg="patient_id"):
                     detail=f"role {role} has no {action} permission",
                 )
                 return (
-                    jsonify(
-                        {
-                            "error": f"Role {role} may not {action} {resource}"
-                        }
-                    ),
+                    jsonify({"error": f"Role {role} may not {action} {resource}"}),
                     403,
                 )
 
@@ -382,9 +377,7 @@ def require_permission(resource, action, patient_arg="patient_id"):
                 "scope": scope,
                 "resource": resource,
                 "action": action,
-                "patient_id": resolve_patient_id(user_id)
-                if role == PATIENT
-                else None,
+                "patient_id": resolve_patient_id(user_id) if role == PATIENT else None,
                 "provider_id": resolve_provider_id(user_id)
                 if role in (DOCTOR, NURSE)
                 else None,
