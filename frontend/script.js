@@ -735,11 +735,15 @@ document.querySelectorAll('.nav-link').forEach(link => {
         }
     });
 });
-    });
-});
-document.getElementById('backToDashboardBtn').addEventListener('click', function () {
-    showPage('providerDashboard');
-});
+
+    // Guarded: an unguarded addEventListener on a missing element throws
+    // during page load, which kills the whole script and every page with it.
+    const backToDashboardBtn = document.getElementById('backToDashboardBtn');
+    if (backToDashboardBtn) {
+        backToDashboardBtn.addEventListener('click', function () {
+            showPage('providerDashboard');
+        });
+    }
 
 
 
