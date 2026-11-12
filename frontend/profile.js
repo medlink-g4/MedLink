@@ -85,9 +85,6 @@
         // --- account details ---
         const infoSection = el('section', 'dashboard-section pd-section');
         infoSection.append(el('h2', '', 'My Account'));
-        const roleLine = el('p', 'pd-note', '');
-        roleLine.id = 'pfRole';
-        roleLine.style.marginBottom = '12px';
 
         const form = el('form', 'pd-form');
         form.id = 'pfForm';
@@ -113,7 +110,7 @@
         message.id = 'pfMsg';
         message.setAttribute('role', 'status');
         form.append(grid, patientGrid, providerGrid, save, message);
-        infoSection.append(roleLine, form);
+        infoSection.append(form);
 
         // --- password ---
         const passwordSection = el('section', 'dashboard-section pd-section');
@@ -145,7 +142,6 @@
     function render(profile) {
         byId('pfName').value = profile.name || '';
         byId('pfEmail').value = profile.email || '';
-        byId('pfRole').textContent = 'Signed in as ' + profile.role + '.';
 
         const isPatient = profile.role === 'patient';
         show('pfPatientFields', isPatient);

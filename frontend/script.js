@@ -147,7 +147,7 @@ function handleLogout(message) {
         typeof message === 'string' ? message : '';
     // Clear anything the last user left on screen so the next person to log in
     // on this browser never sees it, even for a moment.
-    ['appointmentsList', 'providerAppointmentsList', 'providerPatientsList',
+    ['appointmentsList', 'pastAppointmentsList', 'providerAppointmentsList', 'providerPatientsList',
      'providerRecordsList', 'medicalRecordsList', 'medicationsList',
      'appointmentReport', 'patientReport', 'medicalReport', 'amBody']
         .forEach(id => {
@@ -217,6 +217,40 @@ function bookingDayString(date) {
 
 let patientDashboardRequest = 0;
 
+// Cancelled, completed and past appointments, newest first. Read only: the
+// dashboard list above is what can be rescheduled or cancelled.
+function renderPastAppointments(appointments) {
+    const list = document.getElementById('pastAppointmentsList');
+    list.replaceChildren();
+    if (appointments.length === 0) {
+        renderEmpty(list, 'No past or cancelled appointments');
+        return;
+    }
+    appointments
+        .slice()
+        .sort((a, b) => b.appointment_time.localeCompare(a.appointment_time))
+        .forEach(appointment => {
+            const card = document.createElement('div');
+            card.className = 'appointment-card past';
+
+            const doctorName = document.createElement('h3');
+            doctorName.textContent = appointment.provider_name || `Provider #${appointment.provider_id}`;
+
+            const when = document.createElement('p');
+            when.textContent = `When: ${formatWhen(appointment.appointment_time)}`;
+
+            const reason = document.createElement('p');
+            reason.textContent = `Reason: ${appointment.reason || 'Not given'}`;
+
+            const status = document.createElement('p');
+            const word = appointment.status || 'unknown';
+            status.textContent = `Status: ${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+
+            card.append(doctorName, when, reason, status);
+            list.appendChild(card);
+        });
+}
+
 async function loadPatientDashboard() {
     const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
@@ -227,6 +261,7 @@ async function loadPatientDashboard() {
     // Clear cards from the previous display.
     appointmentsList.replaceChildren();
     renderEmpty(appointmentsList, 'Loading appointments...');
+    document.getElementById('pastAppointmentsList').replaceChildren();
 
     // If this runs twice in a row, only the newest answer is drawn.
     const ticket = ++patientDashboardRequest;
@@ -256,6 +291,9 @@ async function loadPatientDashboard() {
             return appointment.status === 'scheduled' && start !== null && start >= now;
         })
         .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+
+    // Everything else (cancelled, completed, or already started) is history.
+    renderPastAppointments(result.data.filter(a => !upcomingAppointments.includes(a)));
 
     // Show a helpful message if there are no upcoming appointments.
     if (upcomingAppointments.length === 0) {
@@ -880,9 +918,30 @@ if (savedToken && savedRole && savedUser) {
 // ===== MESSAGING LOGIC =====
 
 let activeConversationUserId = null;
+let activeConversationName = '';
 
-async function openConversation(otherUserId, otherUserName) {
+// Read a response body as JSON without throwing. A crashed server returns an
+// HTML error page, which must not look like "could not connect".
+async function readJson(response) {
+    try {
+        return await response.json();
+    } catch (err) {
+        return null;
+    }
+}
+
+function serverProblem(response) {
+    return `The server had a problem (error ${response.status}). Please try again.`;
+}
+
+// 'doctor' -> 'Doctor'
+function roleLabel(role) {
+    return role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
+}
+
+async function openConversation(otherUserId, otherUserName, shortName) {
     activeConversationUserId = otherUserId;
+    activeConversationName = shortName || otherUserName;
 
     document.getElementById('messagesContacts').classList.add('hidden');
     document.getElementById('messagesConversation').classList.remove('hidden');
@@ -908,10 +967,11 @@ async function loadMessages() {
             }
         );
 
-        const data = await response.json();
+        const data = await readJson(response);
 
-        if (!response.ok) {
-            messageStatus.textContent = data.error || 'Could not load messages.';
+        if (!response.ok || !Array.isArray(data)) {
+            messageStatus.textContent =
+                (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -923,7 +983,7 @@ async function loadMessages() {
         data.forEach(message => {
             const item = document.createElement('p');
             item.textContent =
-                `${message.sender_id === currentUser.id ? 'You' : 'Them'}: ${message.message}`;
+                `${message.sender_id === currentUser.id ? 'You' : activeConversationName}: ${message.message}`;
             messagesList.appendChild(item);
         });
 
@@ -959,10 +1019,10 @@ async function sendMessage(event) {
             })
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
 
         if (!response.ok) {
-            messageStatus.textContent = data.error || 'Could not send message.';
+            messageStatus.textContent = (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -999,11 +1059,11 @@ async function loadContacts() {
             }
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
 
-        if (!response.ok) {
+        if (!response.ok || !Array.isArray(data)) {
             messagesStatus.textContent =
-                data.error || 'Could not load conversations.';
+                (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -1023,13 +1083,12 @@ async function loadContacts() {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'contact-button btn-secondary';
-            button.textContent = `${contact.role} (User ID: ${contact.id})`;
+            const name = contact.name || `${roleLabel(contact.role)} #${contact.id}`;
+            const label = `${name} (${roleLabel(contact.role)})`;
+            button.textContent = label;
 
             button.addEventListener('click', () => {
-                openConversation(
-                    contact.id,
-                    `${contact.role} (User ID: ${contact.id})`
-                );
+                openConversation(contact.id, label, name);
             });
 
             contactsContainer.appendChild(button);

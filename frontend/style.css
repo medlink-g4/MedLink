@@ -249,6 +249,14 @@ body {
     font-size: 14px;
 }
 
+.appointment-card.past {
+    border-left-color: #95a5a6;
+}
+
+.appointment-card.past h3 {
+    color: #7f8c8d;
+}
+
 .no-data {
     text-align: center;
     color: #999;

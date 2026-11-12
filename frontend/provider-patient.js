@@ -85,6 +85,24 @@
         return { ok: response.ok, status: response.status, data: data };
     }
 
+    async function recordsApi(path, method, body) {
+        const response = await fetch(API_BASE_URL + '/api/medical-records' + path, {
+            method: method || 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: body === undefined ? undefined : JSON.stringify(body)
+        });
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (err) {
+            // body was not JSON; leave data null
+        }
+        return { ok: response.ok, status: response.status, data: data };
+    }
+
     function errorText(result, fallback) {
         return (result.data && result.data.error) || fallback;
     }
@@ -168,16 +186,43 @@
 
         vitalsSection.append(latest, vitalsForm, el('h3', 'pd-history-title', 'History'), history);
 
+        // --- medical records (doctors add; nurses can read) ---
+        const recordsSection = el('section', 'dashboard-section pd-section');
+        recordsSection.id = 'pdRecordsSection';
+        recordsSection.append(el('h2', '', 'Medical Records'));
+
+        const recordsList = el('div', 'appointments-list');
+        recordsList.id = 'pdRecordsList';
+
+        const recordForm = el('form', 'pd-form');
+        recordForm.id = 'pdRecordForm';
+        recordForm.append(el('h3', '', 'Add a medical record'));
+        const recordGrid = el('div', 'pd-grid');
+        recordGrid.append(
+            labelledInput('pdrDiagnosis', 'Diagnosis', 'text', { maxLength: 500 }),
+            labelledInput('pdrPrescription', 'Prescription', 'text', { maxLength: 500 }),
+            labelledInput('pdrDate', 'Date (blank = today)', 'date')
+        );
+        const recordButton = el('button', 'btn-primary', 'Add record');
+        recordButton.type = 'submit';
+        const recordMessage = el('p', 'pd-message');
+        recordMessage.id = 'pdRecordMsg';
+        recordMessage.setAttribute('role', 'status');
+        recordForm.append(recordGrid, recordButton, recordMessage);
+
+        recordsSection.append(recordsList, recordForm);
+
         const back = el('button', 'btn-secondary', 'Back to dashboard');
         back.type = 'button';
         back.id = 'pdBack';
 
-        container.append(title, infoSection, vitalsSection, back);
+        container.append(title, infoSection, vitalsSection, recordsSection, back);
         page.append(container);
         document.body.append(page);
 
         editForm.addEventListener('submit', onSaveInfo);
         vitalsForm.addEventListener('submit', onRecordVitals);
+        recordForm.addEventListener('submit', onAddRecord);
         back.addEventListener('click', async function () {
             await loadProviderDashboard(); // pick up anything just edited
             showPage('providerDashboard');
@@ -259,6 +304,59 @@
         history.append(table);
     }
 
+    function renderRecords(records) {
+        const list = byId('pdRecordsList');
+        list.replaceChildren();
+        if (!records || records.length === 0) {
+            list.append(el('p', 'no-data', 'No medical records yet'));
+            return;
+        }
+        records.forEach(function (record) {
+            const card = el('div', 'appointment-card');
+            card.append(
+                el('h3', '', record.record_date || 'Record'),
+                el('p', '', 'Diagnosis: ' + (record.diagnosis || 'N/A')),
+                el('p', '', 'Prescription: ' + (record.prescription || 'N/A')),
+                el('p', '', 'By: ' + (record.provider_name || 'Unknown'))
+            );
+            list.append(card);
+        });
+    }
+
+    async function loadRecords() {
+        const result = await recordsApi('/patient/' + currentPatientId);
+        if (!result.ok) {
+            byId('pdRecordsList').replaceChildren(
+                el('p', 'no-data', errorText(result, 'Could not load medical records.')));
+            return;
+        }
+        renderRecords(result.data);
+    }
+
+    async function onAddRecord(event) {
+        event.preventDefault();
+        const diagnosis = byId('pdrDiagnosis').value.trim();
+        const prescription = byId('pdrPrescription').value.trim();
+        if (!diagnosis && !prescription) {
+            setMessage('pdRecordMsg', 'Enter a diagnosis or a prescription.', 'error');
+            return;
+        }
+        setMessage('pdRecordMsg', 'Saving…');
+        const result = await recordsApi('', 'POST', {
+            patient_id: currentPatientId,
+            diagnosis: diagnosis || null,
+            prescription: prescription || null,
+            record_date: byId('pdrDate').value || null
+        });
+        if (!result.ok) {
+            setMessage('pdRecordMsg', errorText(result, 'Could not add the record.'), 'error');
+            return;
+        }
+        byId('pdRecordForm').reset();
+        await loadRecords();
+        setMessage('pdRecordMsg', 'Record added.', 'ok');
+    }
+
     // ---------- actions ----------
     async function onSaveInfo(event) {
         event.preventDefault();
@@ -317,6 +415,12 @@
         show('pdNurseNote', false);
         show('pdVitalsSection', true);
         show('pdInfoSection', true);
+        show('pdRecordsSection', true);
+        // Only doctors can add records; the server enforces it as well.
+        show('pdRecordForm', currentRole === 'doctor');
+        setMessage('pdRecordMsg', '');
+        byId('pdRecordForm').reset();
+        byId('pdRecordsList').replaceChildren();
         setMessage('pdInfoMsg', '');
         setMessage('pdVitalsMsg', '');
         byId('pdVitalsForm').reset();
@@ -339,11 +443,13 @@
             show('pdEditForm', false);
             show('pdNurseNote', false);
             show('pdVitalsSection', false);
+            show('pdRecordsSection', false);
             byId('pdInfo').replaceChildren(el('dd', 'no-data', errorText(patient, 'Could not load this patient.')));
             return;
         }
         renderInfo(patient.data);
         renderVitals(vitals.ok ? vitals.data : null);
+        loadRecords();
     }
 
     window.openPatientDetail = openPatientDetail;
