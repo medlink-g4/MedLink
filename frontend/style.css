@@ -101,15 +101,6 @@ body {
     text-decoration: underline;
 }
 
-.demo-info {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid #ddd;
-    font-size: 12px;
-    color: #999;
-    text-align: center;
-}
-
 /* ===== BUTTONS ===== */
 .btn-primary {
     background-color: #667eea;
@@ -183,6 +174,21 @@ body {
 .nav-link:hover {
     background-color: #34495e;
 }
+
+.nav-link.active {
+    background-color: #34495e;
+    border-left: 4px solid #667eea;
+    padding-left: 16px;
+    font-weight: 600;
+}
+
+.nav-link:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible {
+    outline: 2px solid #667eea;
+    outline-offset: 2px;
+}
+
 
 .sidebar hr {
     margin: 10px 0;
@@ -360,6 +366,36 @@ body {
         width: 100%;
         height: auto;
         margin-bottom: 20px;
+    }
+
+    .sidebar-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 10px;
+    }
+
+    .sidebar hr {
+        display: none;
+    }
+
+    .nav-link {
+        padding: 10px 12px;
+    }
+
+    .nav-link.active {
+        border-left: none;
+        padding-left: 12px;
+        border-bottom: 3px solid #667eea;
+    }
+
+    #loginPage {
+        height: auto;
+        min-height: 100vh;
+        padding: 20px 0;
+    }
+
+    .login-container {
+        padding: 24px;
     }
     
     .dashboard-container,

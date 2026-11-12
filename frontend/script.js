@@ -1,12 +1,59 @@
 // ===== API CONFIG =====
 const API_BASE_URL = 'http://localhost:5000';
-window.addEventListener('beforeunload', () => {
-    console.log('DEBUG: MedLink page is reloading or closing.');
-});
 // ===== CURRENT USER STATE =====
 let currentUser = null;   // { id, name, role } for display purposes
 let currentRole = null;
 let authToken = null;     // real JWT from /api/auth/login, used for every backend call
+
+// ===== EXPIRED SESSIONS =====
+// Every API call goes through fetch. If the server answers 401 to a call that
+// carried our token, the token has expired or is invalid, so send the user back
+// to the login page with a message instead of leaving them on a dead screen.
+// The login request itself is skipped: its 401 just means a wrong password.
+const originalFetch = window.fetch.bind(window);
+window.fetch = async function (input, init) {
+    const response = await originalFetch(input, init);
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (response.status === 401 && authToken && !url.includes('/api/auth/login')) {
+        handleLogout('Your session has expired. Please log in again.');
+    }
+    return response;
+};
+
+// ===== SIDEBAR =====
+// Each link lists the roles that may use it in data-roles. The server still
+// enforces permissions; this only stops people seeing links that go nowhere.
+function updateSidebar(pageId) {
+    const dashboardLabel = currentRole === 'patient' ? 'Appointments' : 'Dashboard';
+    // Pages that belong to a link even though they have a different id.
+    const owner = {
+        providerDashboard: 'patientDashboard',
+        appointmentScheduling: 'patientDashboard'
+    };
+    const activePage = owner[pageId] || pageId;
+    // Patients reach Manage Appointments from their dashboard, so highlight
+    // "Appointments" while they are on it.
+    const highlight = (currentRole === 'patient' && activePage === 'appointmentManager')
+        ? 'patientDashboard' : activePage;
+
+    document.querySelectorAll('#sidebar .nav-link[data-roles]').forEach(link => {
+        const allowed = link.dataset.roles.split(',').includes(currentRole);
+        link.classList.toggle('hidden', !allowed);
+        link.classList.toggle('active', allowed && link.dataset.page === highlight);
+        if (link.dataset.page === 'patientDashboard') {
+            link.textContent = dashboardLabel;
+        }
+    });
+}
+
+// ===== DATES =====
+// "2026-10-30T09:00" -> "Fri, Oct 30, 2026, 9:00 AM". Falls back to the raw
+// text if it is not in that format.
+function formatWhen(text) {
+    const date = bookingParseTime(text);
+    if (!date) return text || 'N/A';
+    return `${bookingDateLabel(date)}, ${bookingTimeLabel(date)}`;
+}
 
 // ===== PAGE MANAGER =====
 function showPage(pageId) {
@@ -21,6 +68,7 @@ function showPage(pageId) {
     const sidebar = document.getElementById('sidebar');
     if (currentUser && pageId !== 'loginPage') {
         sidebar.classList.remove('hidden');
+        updateSidebar(pageId);
     } else {
         sidebar.classList.add('hidden');
     }
@@ -57,13 +105,21 @@ async function handleLogin(event) {
         // Successful login
         authToken = data.token;
         currentRole = data.role;
-        const reportsLink = document.getElementById('reportsNavLink');
-
-if (reportsLink) {
-    reportsLink.style.display =
-        currentRole === 'patient' ? 'none' : '';
-}
-        currentUser = { id: data.userId, role: data.role, name: emailInput };
+        // The login response has no name, so ask for the profile to greet
+        // people by name. If that fails, fall back to what they typed.
+        let displayName = emailInput;
+        try {
+            const me = await fetch(`${API_BASE_URL}/api/users/me`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            if (me.ok) {
+                const profile = await me.json();
+                displayName = profile.name || emailInput;
+            }
+        } catch (err) {
+            // keep the fallback name
+        }
+        currentUser = { id: data.userId, role: data.role, name: displayName };
         sessionStorage.setItem('authToken', authToken);
         sessionStorage.setItem('currentRole', currentRole);
         sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
@@ -79,7 +135,7 @@ if (reportsLink) {
     }
 }
 
-function handleLogout() {
+function handleLogout(message) {
     currentUser = null;
     currentRole = null;
     authToken = null;
@@ -87,7 +143,20 @@ function handleLogout() {
     sessionStorage.removeItem('currentRole');
     sessionStorage.removeItem('currentUser');
     document.getElementById('loginForm').reset();
-    document.getElementById('errorMessage').textContent = '';
+    document.getElementById('errorMessage').textContent =
+        typeof message === 'string' ? message : '';
+    // Clear anything the last user left on screen so the next person to log in
+    // on this browser never sees it, even for a moment.
+    ['appointmentsList', 'providerAppointmentsList', 'providerPatientsList',
+     'providerRecordsList', 'medicalRecordsList', 'medicationsList',
+     'appointmentReport', 'patientReport', 'medicalReport', 'amBody']
+        .forEach(id => {
+            const node = document.getElementById(id);
+            if (node) node.replaceChildren();
+        });
+    const amMsg = document.getElementById('amMsg');
+    if (amMsg) amMsg.textContent = '';
+    returnToContacts();
     showPage('loginPage');
 }
 
@@ -278,6 +347,19 @@ async function loadAppointmentForm() {
             const label = doctor.specialty ? `${doctor.name} (${doctor.specialty})` : doctor.name;
             doctorSelect.appendChild(new Option(label, doctor.id));
         });
+
+        // Nurses are optional, so a failure here must not block booking.
+        const nurseSelect = document.getElementById('nurseSelect');
+        nurseSelect.replaceChildren(
+            new Option('Any available nurse', 'any'),
+            new Option('No nurse', '')
+        );
+        const nurses = await bookingApi('/api/providers?role_type=nurse');
+        if (nurses.ok) {
+            nurses.data.forEach(nurse => {
+                nurseSelect.appendChild(new Option(nurse.name, nurse.id));
+            });
+        }
     } catch (err) {
         setBookingMessage('Could not reach the server.');
     }
@@ -351,6 +433,7 @@ async function handleScheduleAppointment(event) {
     const date = document.getElementById('appointmentDate').value;
     const time = document.getElementById('selectedTime').value;
     const reason = document.getElementById('appointmentReason').value.trim();
+    const nurseValue = document.getElementById('nurseSelect').value;
 
     if (!doctorId || !date || !time) {
         setBookingMessage('Please select a doctor, a date, and a time.');
@@ -374,7 +457,10 @@ async function handleScheduleAppointment(event) {
             patient_id: me.data.patient.id,
             provider_id: Number(doctorId),
             appointment_time: time,
-            reason: reason || null
+            reason: reason || null,
+            // "any" lets the server pick a free nurse; "" means none.
+            assisting_nurse_id: nurseValue === 'any' ? 'any'
+                : (nurseValue === '' ? null : Number(nurseValue))
         });
 
         if (!result.ok) {
@@ -407,7 +493,7 @@ async function handleScheduleAppointment(event) {
 // correctly scoped data for whichever role is in the JWT.
 async function loadProviderDashboard() {
     const welcome = document.getElementById('providerWelcome');
-    welcome.textContent = `Welcome, ${currentRole === 'doctor' ? 'Dr.' : 'Nurse'} (${currentUser.name})`;
+    welcome.textContent = `Welcome, ${currentRole === 'doctor' ? 'Dr. ' : 'Nurse '}${currentUser.name}`;
 
     const appointmentsList = document.getElementById('providerAppointmentsList');
     const patientsList = document.getElementById('providerPatientsList');
@@ -470,7 +556,7 @@ async function loadReports() {
                 const card = document.createElement('div');
                 card.className = 'appointment-card';
                 card.textContent =
-                    `${appt.patient_name} | ${appt.appointment_time} | ${appt.status}`;
+                    `${appt.patient_name} | ${formatWhen(appt.appointment_time)} | ${appt.status}`;
                 appointmentReport.appendChild(card);
             });
         }
@@ -616,7 +702,7 @@ function renderAppointments(container, appointments) {
         name.textContent = appt.patient_name;
 
         const time = document.createElement('p');
-        time.textContent = `Time: ${appt.appointment_time}`;
+        time.textContent = `Time: ${formatWhen(appt.appointment_time)}`;
 
         const status = document.createElement('p');
         status.textContent = `Status: ${appt.status}`;
@@ -687,7 +773,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelector('.forgot-password').addEventListener('click', function (e) {
         e.preventDefault();
-        alert('Password reset functionality coming soon!');
+        const errorMessage = document.getElementById('errorMessage');
+        errorMessage.textContent =
+            'Password reset by email is not available yet. Please contact your clinic to reset your password.';
     });
 
     document.getElementById('scheduleNewBtn').addEventListener('click', function () {
@@ -733,8 +821,6 @@ document.querySelectorAll('.nav-link').forEach(link => {
         if (pageId === 'medicalHistory' && currentRole === 'patient') {
             loadMedicalHistory();
         }
-    });
-});
     });
 });
 document.getElementById('backToDashboardBtn').addEventListener('click', function () {

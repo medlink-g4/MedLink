@@ -22,13 +22,8 @@
 
                 <button type="submit" class="btn-primary">Log In</button>
             </form>
-            <p id="errorMessage" class="error-message"></p>
+            <p id="errorMessage" class="error-message" role="alert"></p>
             <a href="#" class="forgot-password">Forgot Password?</a>
-
-            <!-- NOTE: these demo creds only work once a matching user is
-                 registered in the real database via POST /api/auth/register.
-                 They are NOT seeded automatically. -->
-            <p class="demo-info">Demo: register a user via /api/auth/register, then log in here with that email/password.</p>
         </div>
     </div>
 
@@ -38,18 +33,20 @@
             <h3>MedLink</h3>
         </div>
         <nav class="sidebar-nav">
-            <a href="#" class="nav-link" data-page="patientDashboard">Appointments</a>
-            <a href="#" class="nav-link" data-page="medicalHistory">Medical History</a>
-            <a href="#" class="nav-link" data-page="messages">Messages</a>
-            <a href="#" class="nav-link" data-page="reports" id="reportsNavLink">Reports</a>
-            <a href="#" class="nav-link" data-page="profile">Profile</a>
-            <a href="#" class="nav-link" data-page="appointmentManager">Manage Appointments</a>
+            <!-- data-roles lists who sees each link; script.js updateSidebar().
+                 Patients open Manage Appointments from their dashboard. -->
+            <a href="#" class="nav-link" data-page="patientDashboard" data-roles="patient,doctor,nurse">Appointments</a>
+            <a href="#" class="nav-link" data-page="appointmentManager" data-roles="nurse">Manage Appointments</a>
+            <a href="#" class="nav-link" data-page="medicalHistory" data-roles="patient">Medical History</a>
+            <a href="#" class="nav-link" data-page="messages" data-roles="patient,doctor,nurse">Messages</a>
+            <a href="#" class="nav-link" data-page="reports" id="reportsNavLink" data-roles="doctor,nurse">Reports</a>
+            <a href="#" class="nav-link" data-page="profile" data-roles="patient,doctor,nurse">Profile</a>
             <hr>
             <a href="#" class="nav-link" id="logoutLink">Logout</a>
         </nav>
     </div>
 
-    <!-- PATIENT DASHBOARD (unchanged -- still mock data, not part of this change) -->
+    <!-- PATIENT DASHBOARD (live data from /api/appointments) -->
     <div id="patientDashboard" class="page hidden">
         <div class="dashboard-container">
             <h1 id="patientWelcome">Welcome, Patient</h1>
@@ -83,6 +80,12 @@
                 </div>
                 <input type="hidden" id="selectedTime">
 
+                <label for="nurseSelect">Nurse (optional):</label>
+                <select id="nurseSelect">
+                    <option value="any">Any available nurse</option>
+                    <option value="">No nurse</option>
+                </select>
+
                 <label for="appointmentReason">Reason (optional):</label>
                 <input type="text" id="appointmentReason" maxlength="500" placeholder="e.g. Annual checkup">
 
@@ -95,17 +98,15 @@
             </form>
         </div>
     </div>
-       <div id="appointmentManager" class="page hidden">
-       <div class="dashboard-container">
-           <h1>Manage Appointments</h1>
-           <p id="amMsg" class="pd-message" role="status"></p>
-           <div id="amBody"></div>
-           <button class="btn-secondary" id="amBackBtn">Back</button>
-       </div>
-   </div>
-
-
-
+    <!-- MANAGE APPOINTMENTS (reschedule / cancel) -->
+    <div id="appointmentManager" class="page hidden">
+        <div class="dashboard-container">
+            <h1>Manage Appointments</h1>
+            <p id="amMsg" class="pd-message" role="status"></p>
+            <div id="amBody"></div>
+            <button class="btn-secondary" id="amBackBtn">Back</button>
+        </div>
+    </div>
 
     <!-- MEDICAL HISTORY PAGE -->
     <div id="medicalHistory" class="page hidden">

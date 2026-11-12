@@ -198,10 +198,13 @@
             return;
         }
         render(result.data);
-        // The welcome banners show currentUser.name, which login set to the
-        // email address, so keep it in step with an email change.
+        // The welcome banners show currentUser.name, so keep it in step with
+        // a name change (and keep it across a page reload).
         if (typeof currentUser !== 'undefined' && currentUser) {
-            currentUser.name = result.data.email;
+            currentUser.name = result.data.name || currentUser.name;
+            try {
+                sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
+            } catch (err) { /* storage unavailable: banner just resets on reload */ }
         }
         setMessage('pfMsg', 'Saved.', 'ok');
     }
