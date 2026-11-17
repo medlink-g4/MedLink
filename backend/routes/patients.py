@@ -34,6 +34,11 @@ patients_bp = Blueprint("patients", __name__)
 # Patient fields a PUT may change. name/email live on the user's own account
 # (users:edit is own-only), so they are deliberately not editable here.
 EDITABLE_FIELDS = ("date_of_birth", "phone", "insurance_info")
+FIELD_LABELS = {
+    "date_of_birth": "Date of birth",
+    "phone": "Phone",
+    "insurance_info": "Insurance",
+}
 PHONE_RE = re.compile(r"^[0-9+().\-\s]{7,30}$")
 
 # field: (type, minimum, maximum) -- plausibility bounds that catch typos
@@ -50,6 +55,24 @@ VITAL_LIMITS = {
     "height_in": (float, 10.0, 100.0),
 }
 VITAL_COLUMNS = tuple(VITAL_LIMITS)  # fixed whitelist -> safe to put in SQL
+
+# What people read in an error message. Column names like temperature_f are for
+# the database, not for a nurse typing a reading. (label, unit)
+VITAL_LABELS = {
+    "temperature_f": ("Temperature", "\u00b0F"),
+    "systolic_bp": ("Systolic blood pressure", "mmHg"),
+    "diastolic_bp": ("Diastolic blood pressure", "mmHg"),
+    "heart_rate": ("Heart rate", "bpm"),
+    "respiratory_rate": ("Respiratory rate", "breaths/min"),
+    "oxygen_saturation": ("Oxygen saturation", "%"),
+    "weight_lb": ("Weight", "lb"),
+    "height_in": ("Height", "in"),
+}
+
+
+def _num(value):
+    """80.0 -> '80', 98.6 -> '98.6'."""
+    return f"{value:g}"
 
 
 def _conn():
@@ -84,7 +107,7 @@ def _validate_patient_update(data):
             clean[field] = None  # explicit null clears the field
             continue
         if not isinstance(value, str):
-            return None, f"{field} must be text"
+            return None, f"{FIELD_LABELS.get(field, field)} must be text"
         value = value.strip()
         if value == "":
             clean[field] = None
@@ -94,20 +117,20 @@ def _validate_patient_update(data):
             try:
                 parsed = datetime.strptime(value, "%Y-%m-%d").date()
             except ValueError:
-                return None, "date_of_birth must be a real date in YYYY-MM-DD format"
+                return None, "Date of birth must be a real date"
             if parsed > date.today():
-                return None, "date_of_birth cannot be in the future"
+                return None, "Date of birth cannot be in the future"
             clean[field] = parsed.isoformat()
         elif field == "phone":
             if not PHONE_RE.match(value):
                 return (
                     None,
-                    "phone may only contain digits, spaces and + ( ) . - (7-30 characters)",
+                    "Phone may only contain digits, spaces and + ( ) . - (7-30 characters)",
                 )
             clean[field] = value
         elif field == "insurance_info":
             if len(value) > 200:
-                return None, "insurance_info must be 200 characters or fewer"
+                return None, "Insurance must be 200 characters or fewer"
             clean[field] = value
     return clean, None
 
@@ -128,25 +151,26 @@ def _validate_vitals(data):
             continue
         # bool is a subclass of int in Python, so reject it explicitly
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None, f"{field} must be a number"
+            return None, f"{VITAL_LABELS[field][0]} must be a number"
         if kind is int:
             if isinstance(value, float) and not value.is_integer():
-                return None, f"{field} must be a whole number"
+                return None, f"{VITAL_LABELS[field][0]} must be a whole number"
             value = int(value)
         else:
             value = float(value)
         # written this way round so NaN fails the check too
         if not (low <= value <= high):
-            return None, f"{field} must be between {low} and {high}"
+            label, unit = VITAL_LABELS[field]
+            return None, f"{label} must be between {_num(low)} and {_num(high)} {unit}"
         clean[field] = value
 
     notes = data.get("notes")
     if notes is not None:
         if not isinstance(notes, str):
-            return None, "notes must be text"
+            return None, "Notes must be text"
         notes = notes.strip()
         if len(notes) > 500:
-            return None, "notes must be 500 characters or fewer"
+            return None, "Notes must be 500 characters or fewer"
         clean["notes"] = notes or None
 
     if not any(field in clean for field in VITAL_COLUMNS):
@@ -154,9 +178,9 @@ def _validate_vitals(data):
 
     systolic, diastolic = clean.get("systolic_bp"), clean.get("diastolic_bp")
     if (systolic is None) != (diastolic is None):
-        return None, "systolic_bp and diastolic_bp must be given together"
+        return None, "Systolic and diastolic blood pressure must be entered together"
     if systolic is not None and systolic <= diastolic:
-        return None, "systolic_bp must be higher than diastolic_bp"
+        return None, "Systolic blood pressure must be higher than diastolic"
 
     return clean, None
 

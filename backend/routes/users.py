@@ -127,19 +127,19 @@ def _validate_profile_update(data, role):
     if "name" in data:
         name = data["name"]
         if not isinstance(name, str) or not name.strip():
-            return None, None, "name is required"
+            return None, None, "Name is required"
         name = name.strip()
         if len(name) > NAME_MAX:
-            return None, None, f"name must be {NAME_MAX} characters or fewer"
+            return None, None, f"Name must be {NAME_MAX} characters or fewer"
         user_fields["name"] = name
 
     if "email" in data:
         email = data["email"]
         if not isinstance(email, str) or not email.strip():
-            return None, None, "email is required"
+            return None, None, "Email is required"
         email = email.strip().lower()  # registration lowercases too
         if len(email) > EMAIL_MAX or not EMAIL_RE.match(email):
-            return None, None, "email must look like name@example.com"
+            return None, None, "Email must look like name@example.com"
         user_fields["email"] = email
 
     detail_fields = {}
@@ -154,7 +154,7 @@ def _validate_profile_update(data, role):
         if specialty is None:
             detail_fields["specialty"] = None
         elif not isinstance(specialty, str):
-            return None, None, "specialty must be text"
+            return None, None, "Specialty must be text"
         else:
             specialty = specialty.strip()
             if len(specialty) > SPECIALTY_MAX:
@@ -224,15 +224,15 @@ def change_password():
         return _error("Send current_password and new_password")
     current, new = data.get("current_password"), data.get("new_password")
     if not isinstance(current, str) or not current:
-        return _error("current_password is required")
+        return _error("Current password is required")
     if not isinstance(new, str) or not new:
-        return _error("new_password is required")
+        return _error("New password is required")
     if len(new) < PASSWORD_MIN:
-        return _error(f"new_password must be at least {PASSWORD_MIN} characters")
+        return _error(f"New password must be at least {PASSWORD_MIN} characters")
     if len(new) > PASSWORD_MAX:
-        return _error(f"new_password must be {PASSWORD_MAX} characters or fewer")
+        return _error(f"New password must be {PASSWORD_MAX} characters or fewer")
     if new == current:
-        return _error("new_password must be different from the current password")
+        return _error("New password must be different from the current password")
 
     conn = _conn()
     try:

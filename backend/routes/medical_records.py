@@ -47,9 +47,9 @@ def parse_record_date(raw):
     try:
         parsed = datetime.strptime(str(raw)[:10], DATE_FORMAT).date()
     except ValueError:
-        _bad(f"record_date must look like 2026-10-13, got {raw!r}")
+        _bad("Record date must be a real date, like 2026-10-13")
     if parsed > date.today():
-        _bad("record_date cannot be in the future")
+        _bad("Record date cannot be in the future")
     return parsed.strftime(DATE_FORMAT)
 
 

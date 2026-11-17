@@ -1,12 +1,59 @@
 // ===== API CONFIG =====
 const API_BASE_URL = 'http://localhost:5000';
-window.addEventListener('beforeunload', () => {
-    console.log('DEBUG: MedLink page is reloading or closing.');
-});
 // ===== CURRENT USER STATE =====
 let currentUser = null;   // { id, name, role } for display purposes
 let currentRole = null;
 let authToken = null;     // real JWT from /api/auth/login, used for every backend call
+
+// ===== EXPIRED SESSIONS =====
+// Every API call goes through fetch. If the server answers 401 to a call that
+// carried our token, the token has expired or is invalid, so send the user back
+// to the login page with a message instead of leaving them on a dead screen.
+// The login request itself is skipped: its 401 just means a wrong password.
+const originalFetch = window.fetch.bind(window);
+window.fetch = async function (input, init) {
+    const response = await originalFetch(input, init);
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (response.status === 401 && authToken && !url.includes('/api/auth/login')) {
+        handleLogout('Your session has expired. Please log in again.');
+    }
+    return response;
+};
+
+// ===== SIDEBAR =====
+// Each link lists the roles that may use it in data-roles. The server still
+// enforces permissions; this only stops people seeing links that go nowhere.
+function updateSidebar(pageId) {
+    const dashboardLabel = currentRole === 'patient' ? 'Appointments' : 'Dashboard';
+    // Pages that belong to a link even though they have a different id.
+    const owner = {
+        providerDashboard: 'patientDashboard',
+        appointmentScheduling: 'patientDashboard'
+    };
+    const activePage = owner[pageId] || pageId;
+    // Patients reach Manage Appointments from their dashboard, so highlight
+    // "Appointments" while they are on it.
+    const highlight = (currentRole === 'patient' && activePage === 'appointmentManager')
+        ? 'patientDashboard' : activePage;
+
+    document.querySelectorAll('#sidebar .nav-link[data-roles]').forEach(link => {
+        const allowed = link.dataset.roles.split(',').includes(currentRole);
+        link.classList.toggle('hidden', !allowed);
+        link.classList.toggle('active', allowed && link.dataset.page === highlight);
+        if (link.dataset.page === 'patientDashboard') {
+            link.textContent = dashboardLabel;
+        }
+    });
+}
+
+// ===== DATES =====
+// "2026-10-30T09:00" -> "Fri, Oct 30, 2026, 9:00 AM". Falls back to the raw
+// text if it is not in that format.
+function formatWhen(text) {
+    const date = bookingParseTime(text);
+    if (!date) return text || 'N/A';
+    return `${bookingDateLabel(date)}, ${bookingTimeLabel(date)}`;
+}
 
 // ===== PAGE MANAGER =====
 function showPage(pageId) {
@@ -21,6 +68,7 @@ function showPage(pageId) {
     const sidebar = document.getElementById('sidebar');
     if (currentUser && pageId !== 'loginPage') {
         sidebar.classList.remove('hidden');
+        updateSidebar(pageId);
     } else {
         sidebar.classList.add('hidden');
     }
@@ -57,13 +105,21 @@ async function handleLogin(event) {
         // Successful login
         authToken = data.token;
         currentRole = data.role;
-        const reportsLink = document.getElementById('reportsNavLink');
-
-if (reportsLink) {
-    reportsLink.style.display =
-        currentRole === 'patient' ? 'none' : '';
-}
-        currentUser = { id: data.userId, role: data.role, name: emailInput };
+        // The login response has no name, so ask for the profile to greet
+        // people by name. If that fails, fall back to what they typed.
+        let displayName = emailInput;
+        try {
+            const me = await fetch(`${API_BASE_URL}/api/users/me`, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            if (me.ok) {
+                const profile = await me.json();
+                displayName = profile.name || emailInput;
+            }
+        } catch (err) {
+            // keep the fallback name
+        }
+        currentUser = { id: data.userId, role: data.role, name: displayName };
         sessionStorage.setItem('authToken', authToken);
         sessionStorage.setItem('currentRole', currentRole);
         sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
@@ -79,7 +135,7 @@ if (reportsLink) {
     }
 }
 
-function handleLogout() {
+function handleLogout(message) {
     currentUser = null;
     currentRole = null;
     authToken = null;
@@ -87,7 +143,20 @@ function handleLogout() {
     sessionStorage.removeItem('currentRole');
     sessionStorage.removeItem('currentUser');
     document.getElementById('loginForm').reset();
-    document.getElementById('errorMessage').textContent = '';
+    document.getElementById('errorMessage').textContent =
+        typeof message === 'string' ? message : '';
+    // Clear anything the last user left on screen so the next person to log in
+    // on this browser never sees it, even for a moment.
+    ['appointmentsList', 'pastAppointmentsList', 'providerAppointmentsList', 'providerPatientsList',
+     'providerRecordsList', 'medicalRecordsList', 'medicationsList',
+     'appointmentReport', 'patientReport', 'medicalReport', 'amBody']
+        .forEach(id => {
+            const node = document.getElementById(id);
+            if (node) node.replaceChildren();
+        });
+    const amMsg = document.getElementById('amMsg');
+    if (amMsg) amMsg.textContent = '';
+    returnToContacts();
     showPage('loginPage');
 }
 
@@ -148,6 +217,40 @@ function bookingDayString(date) {
 
 let patientDashboardRequest = 0;
 
+// Cancelled, completed and past appointments, newest first. Read only: the
+// dashboard list above is what can be rescheduled or cancelled.
+function renderPastAppointments(appointments) {
+    const list = document.getElementById('pastAppointmentsList');
+    list.replaceChildren();
+    if (appointments.length === 0) {
+        renderEmpty(list, 'No past or cancelled appointments');
+        return;
+    }
+    appointments
+        .slice()
+        .sort((a, b) => b.appointment_time.localeCompare(a.appointment_time))
+        .forEach(appointment => {
+            const card = document.createElement('div');
+            card.className = 'appointment-card past';
+
+            const doctorName = document.createElement('h3');
+            doctorName.textContent = appointment.provider_name || `Provider #${appointment.provider_id}`;
+
+            const when = document.createElement('p');
+            when.textContent = `When: ${formatWhen(appointment.appointment_time)}`;
+
+            const reason = document.createElement('p');
+            reason.textContent = `Reason: ${appointment.reason || 'Not given'}`;
+
+            const status = document.createElement('p');
+            const word = appointment.status || 'unknown';
+            status.textContent = `Status: ${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+
+            card.append(doctorName, when, reason, status);
+            list.appendChild(card);
+        });
+}
+
 async function loadPatientDashboard() {
     const welcome = document.getElementById('patientWelcome');
     const appointmentsList = document.getElementById('appointmentsList');
@@ -158,6 +261,7 @@ async function loadPatientDashboard() {
     // Clear cards from the previous display.
     appointmentsList.replaceChildren();
     renderEmpty(appointmentsList, 'Loading appointments...');
+    document.getElementById('pastAppointmentsList').replaceChildren();
 
     // If this runs twice in a row, only the newest answer is drawn.
     const ticket = ++patientDashboardRequest;
@@ -187,6 +291,9 @@ async function loadPatientDashboard() {
             return appointment.status === 'scheduled' && start !== null && start >= now;
         })
         .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
+
+    // Everything else (cancelled, completed, or already started) is history.
+    renderPastAppointments(result.data.filter(a => !upcomingAppointments.includes(a)));
 
     // Show a helpful message if there are no upcoming appointments.
     if (upcomingAppointments.length === 0) {
@@ -278,6 +385,19 @@ async function loadAppointmentForm() {
             const label = doctor.specialty ? `${doctor.name} (${doctor.specialty})` : doctor.name;
             doctorSelect.appendChild(new Option(label, doctor.id));
         });
+
+        // Nurses are optional, so a failure here must not block booking.
+        const nurseSelect = document.getElementById('nurseSelect');
+        nurseSelect.replaceChildren(
+            new Option('Any available nurse', 'any'),
+            new Option('No nurse', '')
+        );
+        const nurses = await bookingApi('/api/providers?role_type=nurse');
+        if (nurses.ok) {
+            nurses.data.forEach(nurse => {
+                nurseSelect.appendChild(new Option(nurse.name, nurse.id));
+            });
+        }
     } catch (err) {
         setBookingMessage('Could not reach the server.');
     }
@@ -351,6 +471,7 @@ async function handleScheduleAppointment(event) {
     const date = document.getElementById('appointmentDate').value;
     const time = document.getElementById('selectedTime').value;
     const reason = document.getElementById('appointmentReason').value.trim();
+    const nurseValue = document.getElementById('nurseSelect').value;
 
     if (!doctorId || !date || !time) {
         setBookingMessage('Please select a doctor, a date, and a time.');
@@ -374,7 +495,10 @@ async function handleScheduleAppointment(event) {
             patient_id: me.data.patient.id,
             provider_id: Number(doctorId),
             appointment_time: time,
-            reason: reason || null
+            reason: reason || null,
+            // "any" lets the server pick a free nurse; "" means none.
+            assisting_nurse_id: nurseValue === 'any' ? 'any'
+                : (nurseValue === '' ? null : Number(nurseValue))
         });
 
         if (!result.ok) {
@@ -407,7 +531,7 @@ async function handleScheduleAppointment(event) {
 // correctly scoped data for whichever role is in the JWT.
 async function loadProviderDashboard() {
     const welcome = document.getElementById('providerWelcome');
-    welcome.textContent = `Welcome, ${currentRole === 'doctor' ? 'Dr.' : 'Nurse'} (${currentUser.name})`;
+    welcome.textContent = `Welcome, ${currentRole === 'doctor' ? 'Dr. ' : 'Nurse '}${currentUser.name}`;
 
     const appointmentsList = document.getElementById('providerAppointmentsList');
     const patientsList = document.getElementById('providerPatientsList');
@@ -470,7 +594,7 @@ async function loadReports() {
                 const card = document.createElement('div');
                 card.className = 'appointment-card';
                 card.textContent =
-                    `${appt.patient_name} | ${appt.appointment_time} | ${appt.status}`;
+                    `${appt.patient_name} | ${formatWhen(appt.appointment_time)} | ${appt.status}`;
                 appointmentReport.appendChild(card);
             });
         }
@@ -616,7 +740,7 @@ function renderAppointments(container, appointments) {
         name.textContent = appt.patient_name;
 
         const time = document.createElement('p');
-        time.textContent = `Time: ${appt.appointment_time}`;
+        time.textContent = `Time: ${formatWhen(appt.appointment_time)}`;
 
         const status = document.createElement('p');
         status.textContent = `Status: ${appt.status}`;
@@ -687,7 +811,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelector('.forgot-password').addEventListener('click', function (e) {
         e.preventDefault();
-        alert('Password reset functionality coming soon!');
+        const errorMessage = document.getElementById('errorMessage');
+        errorMessage.textContent =
+            'Password reset by email is not available yet. Please contact your clinic to reset your password.';
     });
 
     document.getElementById('scheduleNewBtn').addEventListener('click', function () {
@@ -735,7 +861,6 @@ document.querySelectorAll('.nav-link').forEach(link => {
         }
     });
 });
-
     // Guarded: an unguarded addEventListener on a missing element throws
     // during page load, which kills the whole script and every page with it.
     const backToDashboardBtn = document.getElementById('backToDashboardBtn');
@@ -798,9 +923,30 @@ if (savedToken && savedRole && savedUser) {
 // ===== MESSAGING LOGIC =====
 
 let activeConversationUserId = null;
+let activeConversationName = '';
 
-async function openConversation(otherUserId, otherUserName) {
+// Read a response body as JSON without throwing. A crashed server returns an
+// HTML error page, which must not look like "could not connect".
+async function readJson(response) {
+    try {
+        return await response.json();
+    } catch (err) {
+        return null;
+    }
+}
+
+function serverProblem(response) {
+    return `The server had a problem (error ${response.status}). Please try again.`;
+}
+
+// 'doctor' -> 'Doctor'
+function roleLabel(role) {
+    return role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
+}
+
+async function openConversation(otherUserId, otherUserName, shortName) {
     activeConversationUserId = otherUserId;
+    activeConversationName = shortName || otherUserName;
 
     document.getElementById('messagesContacts').classList.add('hidden');
     document.getElementById('messagesConversation').classList.remove('hidden');
@@ -826,10 +972,11 @@ async function loadMessages() {
             }
         );
 
-        const data = await response.json();
+        const data = await readJson(response);
 
-        if (!response.ok) {
-            messageStatus.textContent = data.error || 'Could not load messages.';
+        if (!response.ok || !Array.isArray(data)) {
+            messageStatus.textContent =
+                (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -841,7 +988,7 @@ async function loadMessages() {
         data.forEach(message => {
             const item = document.createElement('p');
             item.textContent =
-                `${message.sender_id === currentUser.id ? 'You' : 'Them'}: ${message.message}`;
+                `${message.sender_id === currentUser.id ? 'You' : activeConversationName}: ${message.message}`;
             messagesList.appendChild(item);
         });
 
@@ -877,10 +1024,10 @@ async function sendMessage(event) {
             })
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
 
         if (!response.ok) {
-            messageStatus.textContent = data.error || 'Could not send message.';
+            messageStatus.textContent = (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -917,11 +1064,11 @@ async function loadContacts() {
             }
         });
 
-        const data = await response.json();
+        const data = await readJson(response);
 
-        if (!response.ok) {
+        if (!response.ok || !Array.isArray(data)) {
             messagesStatus.textContent =
-                data.error || 'Could not load conversations.';
+                (data && data.error) || serverProblem(response);
             return;
         }
 
@@ -941,13 +1088,12 @@ async function loadContacts() {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'contact-button btn-secondary';
-            button.textContent = `${contact.role} (User ID: ${contact.id})`;
+            const name = contact.name || `${roleLabel(contact.role)} #${contact.id}`;
+            const label = `${name} (${roleLabel(contact.role)})`;
+            button.textContent = label;
 
             button.addEventListener('click', () => {
-                openConversation(
-                    contact.id,
-                    `${contact.role} (User ID: ${contact.id})`
-                );
+                openConversation(contact.id, label, name);
             });
 
             contactsContainer.appendChild(button);

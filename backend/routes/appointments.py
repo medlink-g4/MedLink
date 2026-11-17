@@ -127,6 +127,53 @@ def taken(conn, column, who, start, exclude_id=None):
     return row is not None
 
 
+def resolve_nurse(conn, requested, start):
+    """Decide which nurse (if any) assists a new appointment.
+
+    requested is what the caller sent as assisting_nurse_id:
+      None / missing  no nurse
+      "any"           the free nurse with the fewest upcoming appointments;
+                      still books with no nurse if every nurse is busy
+      an id           that nurse, which must exist, be a nurse and be free
+
+    Returns (nurse_id, None) or (None, error_response). A nurse can see the
+    patients on their appointments, so a nurse is only ever attached because
+    the caller asked for one.
+    """
+    if requested is None or requested == "":
+        return None, None
+
+    if requested == "any":
+        row = conn.execute(
+            """SELECT p.id FROM providers p
+               WHERE p.role_type = 'nurse'
+                 AND NOT EXISTS (
+                     SELECT 1 FROM appointments a
+                     WHERE a.assisting_nurse_id = p.id
+                       AND a.appointment_time = ? AND a.status != 'cancelled')
+               ORDER BY (SELECT COUNT(*) FROM appointments a
+                         WHERE a.assisting_nurse_id = p.id
+                           AND a.status = 'scheduled'), p.id
+               LIMIT 1""",
+            (fmt(start),),
+        ).fetchone()
+        return (row[0] if row else None), None
+
+    if not isinstance(requested, int) or isinstance(requested, bool):
+        return None, (jsonify({"error": "assisting_nurse_id must be a nurse id or \"any\""}), 400)
+    nurse = conn.execute(
+        "SELECT role_type FROM providers WHERE id = ?", (requested,)
+    ).fetchone()
+    if nurse is None or nurse[0] != "nurse":
+        return None, (jsonify({"error": f"No nurse with id {requested}"}), 400)
+    if taken(conn, "assisting_nurse_id", requested, start):
+        return None, (
+            jsonify({"error": f"Nurse {requested} is already booked at {fmt(start)}"}),
+            409,
+        )
+    return requested, None
+
+
 @appointments_bp.route("", methods=["POST"])
 @appointments_bp.route("/", methods=["POST"])
 @require_permission("appointments", "create")
@@ -174,6 +221,12 @@ def book():
                     }
                 ), 409
 
+            nurse_id, nurse_error = resolve_nurse(
+                conn, data.get("assisting_nurse_id"), start
+            )
+            if nurse_error is not None:
+                return nurse_error
+
             cur = conn.execute(
                 """INSERT INTO appointments
                    (patient_id, provider_id, assisting_nurse_id,
@@ -182,7 +235,7 @@ def book():
                 (
                     patient_id,
                     provider_id,
-                    data.get("assisting_nurse_id"),
+                    nurse_id,
                     fmt(start),
                     fmt(end),
                     data.get("reason"),
@@ -203,6 +256,7 @@ def book():
             "id": appointment_id,
             "patient_id": patient_id,
             "provider_id": provider_id,
+            "assisting_nurse_id": nurse_id,
             "appointment_time": fmt(start),
             "end_appointment_time": fmt(end),
             "status": "scheduled",

@@ -39,8 +39,22 @@ def can_communicate(conn, caller_user_id, caller_role, other_user_id):
 
         return is_assigned(provider_id, patient_id, other_role)
 
-    # Doctors and nurses can message only patients assigned to them.
+    # Doctors and nurses can message patients assigned to them, and a doctor
+    # and nurse can message each other when they are on an appointment together.
     if caller_role in (DOCTOR, NURSE):
+        if other_role in (DOCTOR, NURSE) and other_role != caller_role:
+            doctor_user = caller_user_id if caller_role == DOCTOR else other_user_id
+            nurse_user = caller_user_id if caller_role == NURSE else other_user_id
+            return conn.execute(
+                """SELECT 1 FROM appointments a
+                   JOIN providers d ON d.id = a.provider_id
+                   JOIN providers n ON n.id = a.assisting_nurse_id
+                   WHERE d.user_id = ? AND n.user_id = ?
+                     AND a.status != 'cancelled'
+                   LIMIT 1""",
+                (doctor_user, nurse_user),
+            ).fetchone() is not None
+
         if other_role != PATIENT:
             return False
 
@@ -64,7 +78,7 @@ def get_contacts():
     conn = get_db()
     try:
         contacts = conn.execute(
-            "SELECT id, role FROM users WHERE id != ?",
+            "SELECT id, name, role FROM users WHERE id != ?",
             (caller_user_id,),
         ).fetchall()
 
@@ -75,6 +89,7 @@ def get_contacts():
             ):
                 result.append({
                     "id": contact["id"],
+                    "name": contact["name"],
                     "role": contact["role"],
                 })
 
