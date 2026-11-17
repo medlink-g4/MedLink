@@ -6,9 +6,8 @@ are owned by other people, so this suite defines the minimum routes needed to
 exercise the real decorators against a real database without claiming that
 work. When those endpoints land, the same decorators apply to them unchanged.
 
-No test here knows how assignment is derived. Assignment is set up purely by
-inserting appointment rows, and if Sprint 3 swaps the derivation inside
-is_assigned() these tests still describe the same behaviour.
+Tests create assignment rows through make_assigned() and verify that the
+permission checks allow access only to providers assigned to the patient.
 """
 
 import base64
@@ -40,28 +39,37 @@ PATIENT_A, PATIENT_B = 1, 2
 
 
 def make_assigned(conn, doctor_provider_id, nurse_provider_id, patient_id):
-    """Put the database into a state where these providers reach this patient.
+    """Create active assignment rows for this patient's doctor and nurse.
 
-    Test setup has to create assignment state somehow, so this helper is the
-    single place in the suite that knows how. Sprint 3's assignment table
-    therefore needs exactly two edits: the body of is_assigned() and the body
-    of this helper. No individual test touches the derivation.
+    Individual tests use this helper to set up the assignment data they need.
     """
+    
     conn.execute(
         """
-        INSERT INTO appointments
-            (patient_id, provider_id, assisting_nurse_id,
-             appointment_time, end_appointment_time, reason, status, created_by)
-        VALUES (?, ?, ?, '2026-09-21T10:00', '2026-09-21T10:30',
-                'Follow-up', 'scheduled', 1)
+        INSERT INTO patient_provider_assignments
+            (patient_id, provider_id, is_active)
+        VALUES (?, ?, 1)
         """,
-        (patient_id, doctor_provider_id, nurse_provider_id),
+        (patient_id, doctor_provider_id),
+    )
+    conn.execute(
+        """
+        INSERT INTO patient_provider_assignments
+            (patient_id, provider_id, is_active)
+        VALUES (?, ?, 1)
+        """,
+        (patient_id, nurse_provider_id),
     )
 
 
 def unassign_nurse_everywhere(conn):
-    """Remove every nurse assignment, leaving doctor assignments intact."""
-    conn.execute("UPDATE appointments SET assisting_nurse_id = NULL")
+    conn.execute(
+        """
+        UPDATE patient_provider_assignments
+        SET is_active = 0
+        WHERE provider_id = 2
+        """
+    )
 
 
 @pytest.fixture()
@@ -190,11 +198,10 @@ def test_nurse_can_update_vitals_for_assigned_patient(client):
 
 # --- 5. Doctor requests an unassigned patient's record -> 403 --------------
 def test_doctor_cannot_read_unassigned_patients_record(client):
-    """Patient A has an appointment, but with a different doctor.
+    """Patient A is assigned to another doctor, not this doctor.
 
-    Asking about a patient who has no appointments at all would pass even if
-    assignment were ignored entirely, so this deliberately targets a patient
-    who IS assigned, just not to this caller.
+    This verifies that having an assignment for one provider does not grant
+    a different provider access to the same patient's record.
     """
     r = client.get(
         f"/h/patients/{PATIENT_A}/records",
@@ -260,8 +267,8 @@ def test_tampered_role_claim_is_unauthorized(client):
     assert r.status_code == 401
 
 
-# --- Extra: a nurse with no assisting rows is reported, not silently denied -
-def test_nurse_with_no_assisting_rows_is_reported(client, db, caplog):
+# --- Extra: nurse with no active assignment is denied -> 403 --------------
+def test_nurse_without_active_assignment_is_denied(client, db):
     import sqlite3
 
     conn = sqlite3.connect(db)
@@ -269,11 +276,9 @@ def test_nurse_with_no_assisting_rows_is_reported(client, db, caplog):
     conn.commit()
     conn.close()
 
-    with caplog.at_level("WARNING"):
-        r = client.put(
-            f"/h/patients/{PATIENT_A}/records/vitals",
-            headers=auth(token_for(NURSE_USER, "nurse")),
-        )
+    r = client.put(
+        f"/h/patients/{PATIENT_A}/records/vitals",
+        headers=auth(token_for(NURSE_USER, "nurse")),
+    )
 
     assert r.status_code == 403
-    assert "no assisting_nurse_id rows" in caplog.text

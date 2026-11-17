@@ -1,10 +1,10 @@
 """Tests for appointment management (task 4.2): changing and cancelling.
 
 Real SQLite database built from the project's own init_db.py, real tokens
-minted the way login mints them, real blueprints on a Flask app. Users are
-registered through /api/auth/register; appointments are inserted with SQL so
-tests can set up states the booking route refuses (a nurse who is already
-assigned, a completed visit, a visit in the past).
+minted the way login mints them, and real blueprints mounted on a Flask app.
+Users are registered through /api/auth/register; appointments and provider
+assignments are inserted directly in the test database to set up cases such as
+an assigned nurse, a completed visit, or a visit in the past.
 """
 
 import sqlite3
@@ -157,6 +157,18 @@ def seed(
             w[patient]["user"],
         ),
     )
+
+    if status != "cancelled":
+        for provider in (doctor, nurse):
+            if provider is not None:
+                sql(
+                    client,
+                    """INSERT OR IGNORE INTO patient_provider_assignments
+                       (patient_id, provider_id, is_active)
+                       VALUES (?, ?, 1)""",
+                    (w[patient]["id"], w[provider]["id"]),
+                )
+
     return rows[0]["id"]
 
 

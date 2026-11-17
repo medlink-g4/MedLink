@@ -47,13 +47,19 @@ def db(tmp_path):
         INSERT INTO providers (id, user_id, role_type) VALUES
             (1, 3, 'doctor'), (2, 4, 'nurse'), (3, 5, 'doctor');
 
-        -- Assignment is derived from non-cancelled appointments, so doctor 1
-        -- and nurse 2 are assigned to patient A. Nobody is assigned to B.
+        -- Patient A has active assignments for doctor 1 and nurse 2.
+        -- Patient B has no provider assignments.
         INSERT INTO appointments
             (patient_id, provider_id, assisting_nurse_id,
              appointment_time, end_appointment_time, reason, status, created_by)
         VALUES (1, 1, 2, '2026-01-05T09:00', '2026-01-05T09:30',
                 'Initial visit', 'completed', 1);
+        INSERT INTO patient_provider_assignments
+            (patient_id, provider_id, is_active)
+        VALUES
+            (1, 1, 1),
+            (1, 2, 1);
+
 
         INSERT INTO medical_records
             (patient_id, provider_id, diagnosis, prescription, record_date)
