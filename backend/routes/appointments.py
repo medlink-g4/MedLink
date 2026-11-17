@@ -160,7 +160,10 @@ def resolve_nurse(conn, requested, start):
         return (row[0] if row else None), None
 
     if not isinstance(requested, int) or isinstance(requested, bool):
-        return None, (jsonify({"error": "assisting_nurse_id must be a nurse id or \"any\""}), 400)
+        return None, (
+            jsonify({"error": 'assisting_nurse_id must be a nurse id or "any"'}),
+            400,
+        )
     nurse = conn.execute(
         "SELECT role_type FROM providers WHERE id = ?", (requested,)
     ).fetchone()
@@ -298,6 +301,61 @@ def cancel(appointment_id):
         conn.close()
 
     return jsonify({"id": appointment_id, "status": "cancelled"}), 200
+
+
+@appointments_bp.route("/<int:appointment_id>/complete", methods=["POST"])
+@require_permission("appointments", "complete")
+def complete(appointment_id):
+    """A doctor marks one of their own visits as done (Sprint 5, task 5.2).
+
+    Nothing ever moved an appointment to 'completed' before, so every visit
+    stayed 'scheduled' for good. Rules: only the appointment's own doctor, only
+    a scheduled appointment, and only once its start time has passed.
+    """
+    conn = get_db()
+    try:
+        appt = conn.execute(
+            "SELECT id, patient_id, provider_id, appointment_time, status "
+            "FROM appointments WHERE id = ?",
+            (appointment_id,),
+        ).fetchone()
+        if appt is None:
+            return jsonify({"error": f"No appointment with id {appointment_id}"}), 404
+
+        enforce_patient_scope(appt["patient_id"])
+
+        # Being assigned to the patient through some other appointment is not
+        # enough: this has to be the doctor the visit was booked with.
+        if appt["provider_id"] != g.auth.get("provider_id"):
+            return jsonify(
+                {"error": "Only the doctor on this appointment can complete it"}
+            ), 403
+
+        if appt["status"] != "scheduled":
+            return jsonify(
+                {"error": f"A {appt['status']} appointment cannot be completed"}
+            ), 409
+
+        try:
+            start = datetime.strptime(appt["appointment_time"][:16], TIME_FORMAT)
+        except (TypeError, ValueError):
+            start = None
+        if start is None or start > datetime.now():
+            return jsonify(
+                {
+                    "error": "That appointment has not started yet, so it cannot be completed"
+                }
+            ), 409
+
+        conn.execute(
+            "UPDATE appointments SET status = 'completed' WHERE id = ?",
+            (appointment_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"id": appointment_id, "status": "completed"}), 200
 
 
 def _validate_changes(data):
