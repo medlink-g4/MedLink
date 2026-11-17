@@ -746,7 +746,40 @@ function renderAppointments(container, appointments) {
         status.textContent = `Status: ${appt.status}`;
 
         card.append(name, time, status);
-        container.appendChild(card);
+        const start = bookingParseTime(appt.appointment_time);
+        if (currentRole === 'doctor' && appt.status === 'scheduled'
+                && start !== null && start <= new Date()) {
+            const message = document.createElement('p');
+            message.className = 'error-message';
+            message.setAttribute('role', 'alert');
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary';
+            button.textContent = 'Mark completed';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                message.textContent = '';
+                try {
+                    const response = await fetch(
+                        `${API_BASE_URL}/api/appointments/${appt.id}/complete`,
+                        { method: 'POST', headers: { 'Authorization': `Bearer ${authToken}` } }
+                    );
+                    const data = await readJson(response);
+                    if (!response.ok) {
+                        message.textContent = (data && data.error) || serverProblem(response);
+                        button.disabled = false;
+                        return;
+                    }
+                    loadProviderDashboard();
+                } catch (err) {
+                    message.textContent = 'Could not reach the server.';
+                    button.disabled = false;
+                }
+            });
+            card.append(button, message);
+        }
+        container.appendChild(card);;
     });
 }
 

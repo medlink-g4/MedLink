@@ -107,6 +107,7 @@ PERMISSIONS = {
         "appointments": {
             "view": ASSIGNED,
             "note": ASSIGNED,
+            "complete": ASSIGNED,
         },
         "providers": {"view": ALL, "edit": OWN},
         "messages": {"view": ASSIGNED, "create": ASSIGNED},
@@ -333,7 +334,7 @@ def _audit(action, outcome, **fields):
         from routes.audit import record
 
         record(action, outcome, **fields)
-    except Exception:  # noqa: BLE001 - auditing must never break a request
+    except Exception:
         log.exception("Could not write audit entry for %s/%s", action, outcome)
 
 
