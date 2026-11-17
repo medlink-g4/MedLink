@@ -62,6 +62,48 @@ cursor.execute("""
         FOREIGN KEY (created_by) REFERENCES users(id)
     )
 """)
+# --- Patient-provider assignments ---
+# Store provider-patient relationships separately from appointment records.
+# The initial backfill below includes scheduled and completed appointments,
+# and excludes cancelled appointments.
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS patient_provider_assignments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        patient_id INTEGER NOT NULL,
+        provider_id INTEGER NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1
+            CHECK (is_active IN (0, 1)),
+        assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
+        ended_at TEXT,
+        FOREIGN KEY (patient_id) REFERENCES patients(id),
+        FOREIGN KEY (provider_id) REFERENCES providers(id),
+        UNIQUE (patient_id, provider_id)
+    )
+""")
+
+cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_patient_provider_assignments_lookup
+        ON patient_provider_assignments
+        (provider_id, patient_id, is_active)
+""")
+
+cursor.execute("""
+    INSERT OR IGNORE INTO patient_provider_assignments
+        (patient_id, provider_id)
+    SELECT patient_id, provider_id
+    FROM appointments
+    WHERE status != 'cancelled'
+
+    UNION
+
+    SELECT patient_id, assisting_nurse_id
+    FROM appointments
+    WHERE status != 'cancelled'
+      AND assisting_nurse_id IS NOT NULL
+
+
+""")
 
 # Appointment lookups are always "whose, and when", so index both directions.
 cursor.execute("""
@@ -183,6 +225,6 @@ conn.commit()
 conn.close()
 print(
     f"{DB_PATH} created with tables: users, patients, providers, "
-    "appointments, medical_records, messages, vitals, "
-    "password_reset_tokens, audit_log"
+    "appointments, patient_provider_assignments, medical_records, "
+    "messages, vitals, password_reset_tokens, audit_log"
 )

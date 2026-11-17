@@ -65,6 +65,11 @@ def db(tmp_path):
              end_appointment_time, reason, status, created_by)
         VALUES (1, 1, 2, '2026-11-02T09:00', '2026-11-02T09:30',
                 'Follow-up', 'scheduled', 1);
+        INSERT INTO patient_provider_assignments
+            (patient_id, provider_id, is_active)
+        VALUES
+            (1, 1, 1),
+            (1, 2, 1);
         """
     )
     conn.commit()

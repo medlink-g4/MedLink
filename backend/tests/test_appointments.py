@@ -59,15 +59,19 @@ def db(tmp_path):
             (1, 3, 'doctor'), (2, 4, 'nurse');
         """
     )
-    # The nurse must already be assigned to patient A to act for them. With
-    # assignment derived from appointments, that means an existing booking.
-    # A past appointment is used so it never collides with slots under test.
+    # Patient A has active assignments for this doctor and nurse.
+    # The past appointment won't conflict with slots under test.
     conn.execute(
         """INSERT INTO appointments
            (patient_id, provider_id, assisting_nurse_id,
             appointment_time, end_appointment_time, reason, status, created_by)
            VALUES (1, 1, 2, '2026-01-05T09:00', '2026-01-05T09:30',
                    'Initial visit', 'completed', 1)"""
+    )
+    conn.execute(
+        """INSERT INTO patient_provider_assignments
+           (patient_id, provider_id, is_active)
+           VALUES (1, 1, 1), (1, 2, 1)"""
     )
     conn.commit()
     conn.close()

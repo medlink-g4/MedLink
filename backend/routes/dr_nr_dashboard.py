@@ -44,9 +44,9 @@ def get_dashboard():
     if provider_id is None:
         return jsonify({"error": "No provider profile found for this account"}), 404
 
-    # Doctors are assigned via appointments.provider_id; nurses via
-    # appointments.assisting_nurse_id. Same column distinction permissions.py
-    # uses in is_assigned().
+    # The appointment list uses the appointment's doctor or assisting-nurse
+    # column. The patient and medical-record lists below use active assignments
+    # from patient_provider_assignments.
     my_column = "provider_id" if role == DOCTOR else "assisting_nurse_id"
 
     conn = get_db()
@@ -64,14 +64,14 @@ def get_dashboard():
     ).fetchall()
 
     patients = conn.execute(
-        f"""
+        """
         SELECT DISTINCT p.id, u.name, u.email, p.phone
-        FROM appointments a
+        FROM patient_provider_assignments a
         JOIN patients p ON a.patient_id = p.id
         JOIN users u ON p.user_id = u.id
-        WHERE a.{my_column} = ? AND a.status != 'cancelled'
+        WHERE a.provider_id = ? AND a.is_active = 1
         ORDER BY u.name ASC
-    """,
+        """,
         (provider_id,),
     ).fetchall()
 
@@ -79,19 +79,20 @@ def get_dashboard():
     # wrote -- a nurse assisting on a visit should see the doctor's notes
     # for that same patient, not just her own entries.
     records = conn.execute(
-        f"""
+        """
         SELECT mr.id, mr.patient_id, u.name AS patient_name,
-               mr.diagnosis, mr.prescription, mr.record_date
+           mr.diagnosis, mr.prescription, mr.record_date
         FROM medical_records mr
         JOIN patients p ON mr.patient_id = p.id
         JOIN users u ON p.user_id = u.id
         WHERE mr.patient_id IN (
-            SELECT DISTINCT a.patient_id FROM appointments a
-            WHERE a.{my_column} = ? AND a.status != 'cancelled'
+            SELECT DISTINCT a.patient_id
+            FROM patient_provider_assignments a
+            WHERE a.provider_id = ? AND a.is_active = 1
         )
         ORDER BY mr.record_date DESC
         LIMIT 10
-    """,
+        """,
         (provider_id,),
     ).fetchall()
 

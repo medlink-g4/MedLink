@@ -37,7 +37,9 @@ def get_reports():
             "error": "No provider profile found for this account"
         }), 404
 
-    # Use the same assignment rules as the provider dashboard.
+    # The appointment report uses the doctor's or assisting nurse's
+    # appointment column. Patient and medical-record reports use active
+    # assignments from patient_provider_assignments.
     my_column = (
         "provider_id" if role == DOCTOR else "assisting_nurse_id"
     )
@@ -62,22 +64,23 @@ def get_reports():
 
         # Patient Report
         patients = conn.execute(
-            f"""
+            """
             SELECT DISTINCT p.id AS patient_id,
                    u.name, u.email, p.phone
-            FROM appointments a
+            FROM patient_provider_assignments a
             JOIN patients p ON a.patient_id = p.id
             JOIN users u ON p.user_id = u.id
-            WHERE a.{my_column} = ?
-              AND a.status != 'cancelled'
+            WHERE a.provider_id = ?
+              AND a.is_active = 1
             ORDER BY u.name ASC
             """,
             (provider_id,),
         ).fetchall()
+            
 
         # Medical Records Report
         records = conn.execute(
-            f"""
+            """
             SELECT mr.id, mr.patient_id,
                    u.name AS patient_name,
                    mr.diagnosis, mr.prescription,
@@ -86,15 +89,16 @@ def get_reports():
             JOIN patients p ON mr.patient_id = p.id
             JOIN users u ON p.user_id = u.id
             WHERE mr.patient_id IN (
-                SELECT DISTINCT patient_id
-                FROM appointments
-                WHERE {my_column} = ?
-                  AND status != 'cancelled'
+                SELECT DISTINCT a.patient_id
+                FROM patient_provider_assignments a
+                WHERE a.provider_id = ?
+                  AND a.is_active = 1
             )
             ORDER BY mr.record_date DESC
             """,
             (provider_id,),
         ).fetchall()
+            
 
     finally:
         conn.close()

@@ -231,62 +231,42 @@ def resolve_patient_id(user_id):
 
 
 def is_assigned(provider_id, patient_id, role):
-    """Is this provider assigned to this patient?
+    """Check whether a doctor or nurse has an active assignment to a patient.
 
-    THIS FUNCTION IS THE ONLY PLACE THAT KNOWS HOW ASSIGNMENT IS DERIVED.
-    No route, decorator, or test may depend on the derivation. Sprint 3 adds a
-    real patient/provider assignment table; swapping to it must be a change to
-    this function body alone, with nothing else in the codebase touched.
-
-    Current derivation, agreed as an interim: a provider is assigned to a
-    patient when a non-cancelled appointment links them. Doctors match on
-    appointments.provider_id, nurses on appointments.assisting_nurse_id.
-
-    Known limits of deriving it this way, which the assignment table fixes:
-    assignment cannot exist before the first appointment is booked, and a
-    single past appointment grants access indefinitely.
+    Assignments are stored in patient_provider_assignments. This function
+    returns True only when the table contains a matching active row.
     """
+    # A missing provider or patient ID cannot match an assignment.
     if provider_id is None or patient_id is None:
         return False
 
-    column = {DOCTOR: "provider_id", NURSE: "assisting_nurse_id"}.get(role)
-    if column is None:
+    # Only doctors and nurses can have provider-to-patient assignments.
+    if role not in (DOCTOR, NURSE):
         return False
 
     conn = get_db()
     try:
+        # Look for an active row matching both IDs. Using both IDs ensures
+        # that one provider's assignment does not grant access to another
+        # patient's information.
         row = conn.execute(
-            f"""
-            SELECT 1 FROM appointments
-            WHERE {column} = ? AND patient_id = ? AND status != 'cancelled'
+            """
+            SELECT 1
+            FROM patient_provider_assignments
+            WHERE provider_id = ?
+              AND patient_id = ?
+              AND is_active = 1
             LIMIT 1
             """,
             (provider_id, patient_id),
         ).fetchone()
-        if row is not None:
-            return True
 
-        # Distinguish "not assigned to this patient" from "this nurse is not
-        # recorded as assisting on any appointment at all", which is a data
-        # problem rather than a permission decision and would otherwise look
-        # like a blanket denial.
-        if role == NURSE:
-            any_rows = conn.execute(
-                "SELECT 1 FROM appointments WHERE assisting_nurse_id = ? LIMIT 1",
-                (provider_id,),
-            ).fetchone()
-            if any_rows is None:
-                log.warning(
-                    "Nurse provider_id=%s has no assisting_nurse_id rows in "
-                    "appointments, so no patient can ever resolve as assigned "
-                    "for this nurse. This is an appointment data gap, not a "
-                    "permission failure.",
-                    provider_id,
-                )
+        # A matching row means access is allowed; no matching row means
+        # this provider is not currently assigned to this patient.
+        return row is not None
     finally:
-        conn.close()
-
-    return False
+        # Close the database connection whether a row was found or not.
+        conn.close()    
 
 
 # ---------------------------------------------------------------------------
