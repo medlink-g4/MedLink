@@ -8,6 +8,15 @@ completed appointment with the doctor and the nurse; patient B has none.
 """
 
 import sqlite3
+
+import sys
+from pathlib import Path
+
+# Without this the module only imports when another test file has already
+# put backend/ on the path, so running this file on its own fails with
+# "No module named 'routes'". Every other test file does the same.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from datetime import timedelta
 
 import pytest
