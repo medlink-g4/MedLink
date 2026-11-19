@@ -1,26 +1,26 @@
-# Sprint 5 Final Security and Access Testing Report — Before Patient-Provider Assignment Table Integration
+# Sprint 5 Final Security and Access Testing Report
 
 ## 1. Scope
 
-This review evaluated MedLink’s existing automated security and access tests on the updated Sprint 5 branch. It focused on authentication, JWT configuration, role-based permissions, patient records, appointments, messages, audit logging, and coverage for the doctor/nurse dashboard and reports.
+I performed automated security and access testing on the patient–provider assignment branch after the assignment table, authorization lookup, dashboard and report queries, and related test fixtures were updated.
 
-No application or test files were changed.
+The review focused on authentication, JWT validation, role-based access control, patient and provider data access, and how active patient–provider assignments affect authorization.
 
-## 2. Tests performed
+## 2. Test command and result
 
-The full test suite was run from the project root with the virtual environment active:
+From the project root, I ran the full backend test suite:
 
-```bash
-python -m pytest backend/tests -q
+```powershell
+.\.venv\Scripts\python.exe -m pytest backend/tests -q -p no:cacheprovider
 ```
 
-**Result: 205 passed in 153.28 seconds.**
+**Result: 205 passed in 138.81 seconds.**
 
-A focused run covered RBAC, authentication, JWT configuration, medical records, appointments, appointment changes, messages, and audit logging.
+No test failures were reported. This run was performed before the pending booking-route update described in Section 6.
 
-**Result: 138 passed in 113.57 seconds.**
+## 3. Test and implementation files reviewed
 
-## 3. Test files reviewed
+### Security and access tests
 
 - `backend/tests/test_rbac.py`
 - `backend/tests/test_auth.py`
@@ -31,44 +31,57 @@ A focused run covered RBAC, authentication, JWT configuration, medical records, 
 - `backend/tests/test_messages.py`
 - `backend/tests/test_audit.py`
 
-Related implementation files reviewed:
+### Related implementation files
 
+- `database/init_db.py`
 - `backend/routes/permissions.py`
-- `backend/routes/messages.py`
+- `backend/routes/appointments.py`
 - `backend/routes/dr_nr_dashboard.py`
 - `backend/routes/reports.py`
+- `backend/routes/messages.py`
 - `backend/routes/patients.py`
-- `database/init_db.py`
 
-## 4. Coverage findings
+## 4. Security and access coverage
 
-The existing suite covers login and registration behavior, JWT validation, patient ownership, role restrictions, provider assignment checks, medical-record access, appointment actions, and audit logging.
+The existing tests cover cases including:
 
-`test_rbac.py` uses test-harness routes to exercise the permission decorator. The medical-record and appointment test files exercise their corresponding application routes.
+- Missing, invalid, expired, and tampered authentication tokens
+- Patients accessing their own records and being denied access to another patient’s records
+- Providers accessing patients with active assignments
+- Providers being denied access when they are unassigned or their assignment is inactive
+- Role restrictions on protected patient, medical-record, appointment, and audit operations
+- Audit logging of allowed and denied access
 
-The review identified these potential coverage gaps:
+The updated test fixtures create assignment rows directly when necessary. These fixtures insert appointments after `init_db.py` has run, so the appointments are not included in the initialization backfill.
 
-- `backend/tests/test_messages.py` checks that authentication is required, but does not test whether assigned patients and providers can communicate while unassigned providers are denied.
+## 5. Coverage limitations
+
+Passing the full suite confirms that the cases covered by the tests passed; it does not show that every application route has dedicated tests.
+
+The review identified these areas with limited dedicated coverage:
+
+- `backend/tests/test_messages.py` checks authentication, but does not test assigned-versus-unassigned provider access to messaging.
 - There are no dedicated test files for the doctor/nurse dashboard or reports routes.
+- The RBAC tests use test-harness routes, so they do not exercise every application route end to end.
 
-These are areas not covered by the tests reviewed; they were not failures in the test run.
+No separate manual browser-based end-to-end test was performed.
 
-## 5. Provider assignment finding
+## 6. Patient–provider assignment findings and follow-up
 
-The current database schema does not include a separate patient-provider assignment table. The `is_assigned()` function in `backend/routes/permissions.py` determines provider assignment from non-cancelled appointment rows. This can allow a past appointment to continue granting access, and it cannot represent an assignment before an appointment exists.
+The assignment implementation adds a `patient_provider_assignments` table. Its initialization backfill includes relationships from all non-cancelled appointments, including completed appointments, to preserve the previous access behavior.
 
-The doctor/nurse dashboard and reports routes also query appointment assignments directly. If those routes should use the proposed assignment table, their queries may need to be updated as part of that work.
+The `is_assigned()` function checks for a matching active assignment. Patient and medical-record lists in the provider dashboard and reports use active assignments; appointment lists continue to use appointment data.
 
-The team will discuss and clarify how assignments will end and how existing appointment relationships should be used to populate the table. After the table is implemented and integrated, the related access tests should be rerun.
+A follow-up discussion with Alex, confirmed that assignments can be ended by setting `is_active` to `0` and recording `ended_at`. No user interface for ending assignments is planned for this sprint.
 
-## 6. JWT configuration finding
+The discussion with Alex, also identified a remaining booking gap: appointments booked after `init_db.py` runs must create assignment rows, or providers may not be recognized as assigned to newly booked patients. This booking-route update was not included in the tested version. The full suite should be rerun after that update is implemented.
 
-The current code requires `JWT_SECRET` unless `MEDLINK_DEV=1` is enabled for local development. `backend/tests/test_jwt_secret.py` covers configured-secret behavior and local development mode. The development mode uses a published key and should be limited to local use.
+## 7. JWT configuration
 
-## 7. Testing limits
+The application requires `JWT_SECRET` unless `MEDLINK_DEV=1` is enabled for local development. The development setting is intended for local use only. The JWT configuration tests cover configured-secret behavior and local development mode.
 
-All tests in the full suite passed. The run does not establish that every application route has dedicated test coverage. This review did not include manual browser testing against a live deployment.
+## 8. Outcome
 
-## 8. Conclusion
+The full backend test suite passed with **205 tests** on the version tested. The tested assignment and access-control changes had no failures in the automated suite.
 
-The full automated test suite passed with **205 tests**, and the focused security and access test run passed with **138 tests**. The review found potential coverage gaps in messaging, dashboard, and reports testing, and confirmed that provider assignment remains appointment-based in the current code. The assignment-table proposal is related follow-up work; the team will confirm its scope and access-lifecycle rules before implementation.
+Final revalidation of booking-based assignment creation remains pending. After that booking-route update is made, the full suite should be rerun and this report updated with the new result.
