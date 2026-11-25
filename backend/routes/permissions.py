@@ -268,6 +268,42 @@ def is_assigned(provider_id, patient_id, role):
         conn.close()    
 
 
+def ensure_assignment(conn, patient_id, provider_id):
+    """Record that this provider is currently assigned to this patient.
+
+    The counterpart to is_assigned(). Kept here beside it on purpose: this
+    module is the only place that knows how assignment is decided, so it is
+    also the only place that should know how one is created.
+
+    Booking an appointment is what creates an assignment. Without this, the
+    table is only ever populated by the one-time backfill in init_db.py, so
+    a provider booked with a new patient after setup has no access to them
+    at all.
+
+    Reactivates rather than inserting a duplicate. The table is unique on
+    (patient_id, provider_id), so a pair whose assignment was ended earlier
+    already has a row; a plain INSERT OR IGNORE would quietly do nothing and
+    leave the provider locked out of a patient they were just booked with.
+
+    Takes the caller's connection rather than opening its own, so that
+    creating the appointment and recording the assignment either both happen
+    or neither does. Does not commit; the caller does.
+    """
+    if patient_id is None or provider_id is None:
+        return
+
+    conn.execute(
+        """
+        INSERT INTO patient_provider_assignments (patient_id, provider_id)
+        VALUES (?, ?)
+        ON CONFLICT (patient_id, provider_id) DO UPDATE
+            SET is_active = 1,
+                ended_at = NULL
+        """,
+        (patient_id, provider_id),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Enforcement
 # ---------------------------------------------------------------------------

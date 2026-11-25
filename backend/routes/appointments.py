@@ -34,6 +34,7 @@ from routes.permissions import (
     ASSIGNED,
     OWN,
     enforce_patient_scope,
+    ensure_assignment,
     get_db,
     require_permission,
 )
@@ -189,8 +190,16 @@ def book():
                     g.auth["user_id"],
                 ),
             )
-            conn.commit()
             appointment_id = cur.lastrowid
+
+            # Booking is what makes a provider assigned to a patient. The
+            # backfill in init_db.py only covers appointments that existed
+            # when it ran, so without this a provider booked with a new
+            # patient cannot see them at all.
+            ensure_assignment(conn, patient_id, provider_id)
+            ensure_assignment(conn, patient_id, data.get("assisting_nurse_id"))
+
+            conn.commit()
         except sqlite3.IntegrityError as exc:
             return jsonify({"error": f"Could not book: {exc}"}), 400
         finally:
@@ -355,6 +364,19 @@ def update(appointment_id):
                 f"UPDATE appointments SET {assignments} WHERE id = ?",
                 (*columns.values(), appointment_id),
             )
+
+        # Moving an appointment to a different doctor has to assign them as
+        # well, for the same reason booking does. The earlier doctor keeps
+        # their assignment: they may still have other appointments with this
+        # patient, and ending an assignment is a deliberate act rather than a
+        # side effect of moving one booking.
+        #
+        # Only provider_id is handled here because UPDATABLE_FIELDS does not
+        # include assisting_nurse_id -- changing the nurse means cancelling
+        # and rebooking, which goes through the booking path above.
+        if "provider_id" in columns:
+            ensure_assignment(conn, appt["patient_id"], columns["provider_id"])
+
         conn.commit()
         row = conn.execute(
             APPOINTMENT_SELECT + " WHERE a.id = ?", (appointment_id,)
